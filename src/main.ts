@@ -55,7 +55,14 @@ async function bootstrap() {
     .setTitle('FOURIER API')
     .setDescription('FOURIER API description')
     .setVersion('1.0')
-    .addBearerAuth()
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+      'access-token',
+    )
     .addServer('/api/v1')
     .build();
 

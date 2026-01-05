@@ -1,7 +1,6 @@
 // src/modules/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AppConfigModule } from 'src/config/app/config.module';
@@ -13,19 +12,22 @@ import { KakaoStrategy } from './strategies/kakao.strategy';
 import { NaverStrategy } from './strategies/naver.strategy';
 import { PassportModule } from '@nestjs/passport';
 import { UsersModule } from '../users/users.module';
-import { RefreshTokenService } from './services/refresh-token.service';
-import { AuthTokenService } from './services/auth-token.service';
-import { SocialConfigService } from 'src/config/social/config.service';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { Auth } from './entities/auth.entity';
-import { RedisService } from 'src/config/redis/redis.service';
-import { RedisConfigService } from 'src/config/redis/config.service';
+import { RefreshTokenService } from './tokens/refresh-token.service';
+import { AuthTokenService } from './tokens/auth-token.service';
+import { GcsModule } from '../gcs/gcs.module';
+import { SocialConfigModule } from 'src/config/social/config.module';
+import { RedisConfigModule } from 'src/config/redis/config.module';
+import { VerificationModule } from '../verification/verification.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Auth]),
     AppConfigModule,
     UsersModule,
+    PassportModule,
+    SocialConfigModule,
+    GcsModule,
+    RedisConfigModule,
+    VerificationModule,
     JwtModule.registerAsync({
       imports: [AppConfigModule],
       inject: [AppConfigService],
@@ -36,10 +38,9 @@ import { RedisConfigService } from 'src/config/redis/config.service';
         },
       }),
     }),
-    PassportModule.register({ defaultStrategy: 'jwt'})
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, GitHubStrategy, KakaoStrategy, NaverStrategy, RefreshTokenService, AuthTokenService, SocialConfigService, RedisConfigService, RedisService],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, GitHubStrategy, KakaoStrategy, NaverStrategy, RefreshTokenService, AuthTokenService],
   exports: [AuthService],
 })
 export class AuthModule {}

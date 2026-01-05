@@ -13,4 +13,5 @@ export default registerAs('app', () => ({
   swaggerUser: process.env.SWAGGER_USER,
   swaggerPassword: process.env.SWAGGER_PASSWORD,
   nodeEnv: process.env.NODE_ENV,
+  defaultAvatar: process.env.DEFAULT_AVATAR,
 }));

@@ -13,11 +13,13 @@ import { ConfigRootModule } from './config/config.module';
 import { AppConfigModule } from './config/app/config.module';
 import { DbConfigModule } from './config/db/config.module';
 import { DatabaseModule } from './modules/database/database.module';
+import { GcsModule } from './modules/gcs/gcs.module';
+import { VerificationModule } from './modules/verification/verification.module';
 
 @Module({
   imports: [
     DatabaseModule,
-    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, WorksheetsModule, UsersModule],
+    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, WorksheetsModule, UsersModule, GcsModule, VerificationModule],
   controllers: [AppController],
   providers: [AppService],
 })

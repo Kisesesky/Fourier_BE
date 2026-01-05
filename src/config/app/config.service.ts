@@ -51,4 +51,8 @@ export class AppConfigService {
   get nodeEnv(): string {
     return this.configService.getOrThrow('app.nodeEnv');
   }
+
+  get defaultAvatar(): string {
+    return this.configService.getOrThrow('app.defaultAvatar');
+  }
 }

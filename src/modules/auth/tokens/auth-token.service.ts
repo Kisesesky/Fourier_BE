@@ -1,4 +1,4 @@
-// src/modules/auth/services/auth-token.service.ts
+// src/modules/auth/tokens/auth-token.service.ts
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AppConfigService } from 'src/config/app/config.service';

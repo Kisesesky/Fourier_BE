@@ -1,4 +1,4 @@
-// src/modules/auth/services/refresh-token.service.ts
+// src/modules/auth/tokens/refresh-token.service.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { RedisService } from 'src/config/redis/redis.service';

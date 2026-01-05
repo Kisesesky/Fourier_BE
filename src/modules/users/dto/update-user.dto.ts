@@ -7,7 +7,7 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   @MinLength(2)
-  name?: string;
+  displayName?: string;
 
   @ApiProperty({
     type: 'string',

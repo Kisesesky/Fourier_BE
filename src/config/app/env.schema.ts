@@ -13,4 +13,5 @@ export const appEnvSchema = {
 	SWAGGER_USER: Joi.string().required(),
 	SWAGGER_PASSWORD: Joi.string().required(),
 	NODE_ENV: Joi.string().valid('development', 'production').required(),
+	DEFAULT_AVATAR: Joi.string().required(),
 };

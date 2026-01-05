@@ -1,10 +1,12 @@
 // src/modules/users/users.service.ts
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { Repository } from 'typeorm';
 import { SignUpDto } from '../auth/dto/sign-up.dto';
 import { REGISTER_STATUS, RegisterStatus } from 'src/common/constants/register-status';
+import { GcsService } from '../gcs/gcs.service';
+import { AppConfigService } from 'src/config/app/config.service';
 
 @Injectable()
 export class UsersService {
@@ -12,7 +14,9 @@ export class UsersService {
 
   constructor(
     @InjectRepository(User)
-    private usersRepository: Repository<User>
+    private usersRepository: Repository<User>,
+    private gcsService: GcsService,
+    private appConfigService: AppConfigService,
   ) {}
 
   async createLocalUser(signUpDto: SignUpDto): Promise<User> {
@@ -25,6 +29,7 @@ export class UsersService {
 
     const newUser = this.usersRepository.create({
       ...signUpDto,
+      displayName: signUpDto.displayName ?? signUpDto.name,
       provider: REGISTER_STATUS.LOCAL,
       avatarUrl: '',
       agreedTerms: signUpDto.agreedTerms,
@@ -34,7 +39,7 @@ export class UsersService {
     return await this.usersRepository.save(newUser);
   }
 
-  async findByUserEmail(email: string): Promise<User | null> {
+  async findUserByEmail(email: string): Promise<User | null> {
     return await this.usersRepository.findOne({ where: { email } });
   }
 
@@ -94,5 +99,39 @@ export class UsersService {
     this.logger.log(`새 소셜 사용자 생성 (ID: ${savedUser.id}, provider: ${provider})`);
 
     return savedUser;
+  }
+
+  async updatePassword(email: string, hashedPassword: string) {
+    const user = await this.usersRepository.findOne({ where: { email }});
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+    user.password = hashedPassword;
+    return this.usersRepository.save(user);
+  }
+
+  async updateName(userId: string, displayName: string) {
+    const exists = await this.usersRepository.findOne({ where : { name: displayName }})
+    if (exists) {
+      throw new BadRequestException('이미 사용 중인 이름입니다.');
+    }
+    await this.usersRepository.update(userId, { name: displayName });
+  }
+
+  async updateAvatar(user: User, file?: Express.Multer.File) {
+    const oldAvatar = user.avatarUrl;
+
+    const newAvatar = file
+      ? await this.gcsService.uploadFile(file)
+      : this.appConfigService.defaultAvatar;
+
+    user.avatarUrl = newAvatar;
+    await this.usersRepository.save(user);
+
+    if (oldAvatar && oldAvatar !== this.appConfigService.defaultAvatar) {
+      await this.gcsService.deleteFile(oldAvatar);
+    }
+
+    return newAvatar;
   }
 }
