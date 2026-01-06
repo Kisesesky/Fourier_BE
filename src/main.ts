@@ -55,6 +55,16 @@ async function bootstrap() {
     .setTitle('FOURIER API')
     .setDescription('FOURIER API description')
     .setVersion('1.0')
+    .addTag('users', '사용자 정보 관리 API') // 태그 추가 및 설명
+    .addTag('auth', '인증 및 사용자 관련 API')
+    .addTag('verification', '인증 관련 API')
+    .addTag('gcs', 'GCS 관련 API')
+    .addTag('members', '친구 관련 API')
+    .addTag('worksheets', 'Worksheet 관련 API')
+    .addTag('docs', '문서 관련 API')
+    .addTag('issues', '이슈 관련 API')
+    .addTag('chat', '채팅 관련 API')
+    .addTag('calendar', '캘린더 관련 API')
     .addBearerAuth(
       {
         type: 'http',
