@@ -4,7 +4,7 @@ import { SendEmailCodeDto } from './dto/send-email-code.dto';
 import { VerifyEmailCodeDto } from './dto/verify-email-code.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-@ApiTags('인증 서비스')
+@ApiTags('verification')
 @Controller('verification')
 export class VerificationController {
   constructor(

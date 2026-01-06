@@ -20,7 +20,7 @@ import { GcsService } from '../gcs/gcs.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ChangePasswordDto, PasswordDto } from '../verification/dto/password.dto';
 
-@ApiTags('유저 인증')
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(

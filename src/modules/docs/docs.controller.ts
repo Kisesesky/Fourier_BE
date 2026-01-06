@@ -2,7 +2,9 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { DocsService } from './docs.service';
 import { CreateDocDto } from './dto/create-doc.dto';
 import { UpdateDocDto } from './dto/update-doc.dto';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('docs')
 @Controller('docs')
 export class DocsController {
   constructor(private readonly docsService: DocsService) {}

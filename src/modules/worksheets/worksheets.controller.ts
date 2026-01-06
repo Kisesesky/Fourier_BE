@@ -2,7 +2,9 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { WorksheetsService } from './worksheets.service';
 import { CreateWorksheetDto } from './dto/create-worksheet.dto';
 import { UpdateWorksheetDto } from './dto/update-worksheet.dto';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('worksheets')
 @Controller('worksheets')
 export class WorksheetsController {
   constructor(private readonly worksheetsService: WorksheetsService) {}

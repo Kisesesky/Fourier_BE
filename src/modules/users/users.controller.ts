@@ -1,5 +1,5 @@
 // src/modules/users/users.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, BadRequestException, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, BadRequestException, UseInterceptors, UploadedFile, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { SignUpDto } from '../auth/dto/sign-up.dto';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -9,7 +9,7 @@ import { User } from './entities/user.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-@ApiTags('사용자')
+@ApiTags('users')
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
 @Controller('users')
@@ -50,5 +50,15 @@ export class UsersController {
     }
 
     return { success: true, message: '프로필이 업데이트되었습니다.' };
+  }
+
+  @ApiOperation({ summary: '검색' })
+  @Get('search')
+  searchUsers(@RequestUser() user: User, @Query('q') keyword: string) {
+    if (!keyword || keyword.length < 2) {
+      throw new BadRequestException('검색어는 2자 이상이어야 합니다.');
+    }
+
+    return this.usersService.searchUsersForMember(user.id, keyword);
   }
 }

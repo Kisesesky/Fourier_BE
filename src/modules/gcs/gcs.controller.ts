@@ -10,7 +10,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GcsService } from 'src/modules/gcs/gcs.service';
 
-@ApiTags('GCS 업로드')
+@ApiTags('gcs')
 @Controller('files')
 export class GcsServiceController {
   constructor(private readonly gcsService: GcsService) {}
