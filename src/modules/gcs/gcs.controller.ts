@@ -7,27 +7,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GcsService } from 'src/modules/gcs/gcs.service';
 
-@ApiTags('files')
+@ApiTags('GCS 업로드')
 @Controller('files')
 export class GcsServiceController {
   constructor(private readonly gcsService: GcsService) {}
 
-  @Post('upload')
   @ApiOperation({ summary: '이미지 업로드(GCS)' })
+  @Post('upload')
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: '업로드할 이미지 파일',
-    schema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', format: 'binary' },
-      },
-      required: ['file'],
-    },
-  })
   @UseInterceptors(FileInterceptor('file', {
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB 제한
     fileFilter: (req, file, cb) => {

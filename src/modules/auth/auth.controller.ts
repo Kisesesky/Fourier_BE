@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Req, Res, HttpCode, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req, Res, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignInDto } from './dto/sign-in.dto';
 import { SignUpDto } from './dto/sign-up.dto';
@@ -13,13 +13,14 @@ import { AppConfigService } from 'src/config/app/config.service';
 import { KakaoAuthGuard } from './guards/kakao-auth.guard';
 import { NaverAuthGuard } from './guards/naver-auth.guard';
 import { GitHubAuthGuard } from './guards/github-auth.guard';
-import { ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { User } from '../users/entities/user.entity';
 import { SocialProfile } from 'src/common/constants/register-status';
 import { GcsService } from '../gcs/gcs.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ChangePasswordDto, PasswordDto } from '../verification/dto/password.dto';
 
+@ApiTags('유저 인증')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -60,9 +61,10 @@ export class AuthController {
       `${this.appConfigService.frontendUrl}/auth/social/callback`,
     );
   }
-  
-  @ApiBearerAuth('access-token')
+
+  @ApiOperation({ summary: '내 정보 조회'})
   @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
   @Get('profile')
   getProfile(
     @RequestUser() user: User,
@@ -70,6 +72,7 @@ export class AuthController {
     return new UserResponseDto(user);
   }
 
+  @ApiOperation({ summary: '회원가입'})
   @Post('sign-up')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('avatar', {
@@ -95,6 +98,7 @@ export class AuthController {
     });
   }
 
+  @ApiOperation({ summary: '로그인'})
   @Post('sign-in')
   async signIn (
     @Body() signInDto: SignInDto,
@@ -103,8 +107,8 @@ export class AuthController {
     return this.authService.signIn(signInDto, origin);
   }
 
+  @ApiOperation({ summary: '로그아웃'})
   @Post('sign-out')
-  @HttpCode(200)
   async signOut (
     @RequestOrigin() origin: string,
     @Res({ passthrough: true }) res: Response,
@@ -120,6 +124,7 @@ export class AuthController {
     };
   }
 
+  @ApiOperation({ summary: '구글 로그인'})
   @UseGuards(GoogleAuthGuard)
   @Get('google')
   async googleSignIn() {
@@ -127,6 +132,7 @@ export class AuthController {
     return;
   }
 
+  @ApiOperation({ summary: '구글 콜백'})
   @UseGuards(GoogleAuthGuard)
   @Get('google/callback')
   async googleCallback(
@@ -137,6 +143,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
+  @ApiOperation({ summary: '카카오 로그인'})
   @UseGuards(KakaoAuthGuard)
   @Get('kakao')
   async kakaoSignIn() {
@@ -144,6 +151,7 @@ export class AuthController {
     return;
   }
 
+  @ApiOperation({ summary: '카카오 콜백'})
   @UseGuards(KakaoAuthGuard)
   @Get('kakao/callback')
   async kakaoCallback(
@@ -154,6 +162,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
+  @ApiOperation({ summary: '네이버 로그인'})
   @UseGuards(NaverAuthGuard)
   @Get('naver')
   async naverSignIn() {
@@ -161,6 +170,7 @@ export class AuthController {
     return;
   }
 
+  @ApiOperation({ summary: '네이버 콜백'})
   @UseGuards(NaverAuthGuard)
   @Get('naver/callback')
   async naverCallback(
@@ -171,6 +181,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
+  @ApiOperation({ summary: '깃허브 로그인'})
   @UseGuards(GitHubAuthGuard)
   @Get('github')
   async githubSignIn() {
@@ -178,6 +189,7 @@ export class AuthController {
     return;
   }
 
+  @ApiOperation({ summary: '깃허브 콜백'})
   @UseGuards(GitHubAuthGuard)
   @Get('github/callback')
   async githubCallback(
@@ -188,6 +200,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
+  @ApiOperation({ summary: '비밀번호 변경'})
   @ApiBearerAuth('access-token')
   @UseGuards(AuthGuard('jwt'))
   @Post('change-password')
@@ -208,6 +221,7 @@ export class AuthController {
     return { success: true, message }
   }
 
+  @ApiOperation({ summary: '비밀번호 초기화'})
   @Post('reset-password')
   async resetPassword(@Body() passwordDto: PasswordDto) {
     const message = await this.authService.resetPassword(passwordDto.email, passwordDto.newPassword, passwordDto.confirmPassword);

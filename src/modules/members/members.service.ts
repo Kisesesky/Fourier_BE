@@ -14,7 +14,7 @@ export class MembersService {
   ) {}
 
   /** 친구 요청 보내기 */
-  async sendFriendRequest(requesterId: string, recipientEmail: string) {
+  async sendMemberRequest(requesterId: string, recipientEmail: string) {
     const recipient = await this.usersService.findUserByEmail(recipientEmail);
     if (!recipient) throw new NotFoundException('존재하지 않는 유저입니다.');
 
@@ -45,7 +45,7 @@ export class MembersService {
   }
 
   /** 친구 요청 수락 */
-  async acceptFriendRequest(memberId: string, userId: string) {
+  async acceptMemberRequest(memberId: string, userId: string) {
     const member = await this.memberRepository.findOne({ where: { id: memberId } });
     if (!member) throw new NotFoundException('친구 요청이 존재하지 않습니다.');
 
@@ -58,7 +58,7 @@ export class MembersService {
   }
 
   /** 친구 요청 거절 또는 삭제 */
-  async removeFriend(memberId: string, userId: string) {
+  async removeMember(memberId: string, userId: string) {
     const member = await this.memberRepository.findOne({ where: { id: memberId } });
     if (!member) throw new NotFoundException('친구 관계가 존재하지 않습니다.');
 
@@ -70,7 +70,7 @@ export class MembersService {
   }
 
   /** 친구 차단 */
-  async blockFriend(memberId: string, userId: string) {
+  async blockMember(memberId: string, userId: string) {
     const member = await this.memberRepository.findOne({ where: { id: memberId } });
     if (!member) throw new NotFoundException('친구 관계가 존재하지 않습니다.');
 
@@ -83,7 +83,7 @@ export class MembersService {
   }
 
   /** 친구 목록 조회 */
-  async getFriends(userId: string) {
+  async getMembers(userId: string) {
     return this.memberRepository.find({
       where: [
         { requester: { id: userId }, status: 'accepted' },
@@ -100,7 +100,7 @@ export class MembersService {
   }
 
   /** 친구 검색 (이메일/이름) */
-  async searchFriends(userId: string, keyword: string) {
+  async searchMembers(userId: string, keyword: string) {
     return this.memberRepository
       .createQueryBuilder('member')
       .leftJoinAndSelect('member.requester', 'requester')

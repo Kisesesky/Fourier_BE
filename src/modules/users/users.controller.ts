@@ -2,24 +2,27 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, BadRequestException, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { SignUpDto } from '../auth/dto/sign-up.dto';
-import { ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
 import { User } from './entities/user.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UpdateUserDto } from './dto/update-user.dto';
 
+@ApiTags('사용자')
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post()
+  @ApiOperation({ summary: '유저 등록' })
+  @Post('create')
   create(@Body() signUpdto: SignUpDto) {
     return this.usersService.createLocalUser(signUpdto);
   }
   
+  @ApiOperation({ summary: '프로필 변경' })
   @Patch('update')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('avatar', {
