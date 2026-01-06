@@ -134,4 +134,28 @@ export class UsersService {
 
     return newAvatar;
   }
+
+  async searchUsersForMember(userId: string, keyword: string) {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .where('user.id != :userId', { userId })
+      .andWhere(
+        `(user.email ILIKE :keyword OR user.name ILIKE :keyword OR user.displayName ILIKE :keyword)`,
+        { keyword: `%${keyword}`}
+      )
+      .andWhere(qb => {
+        const subQuery = qb
+          .subQuery()
+          .select('1')
+          .from('members', 'm')
+          .where(
+            `(m.requesterId = :userId AND m.recipientId = user.id)
+            OR (m.recipientId = :userId AND m.requesterId = user.id)`
+          )
+          .getQuery();
+        return `NOT EXISTS ${subQuery}`;
+      })
+      .setParameter('userID', userId)
+      .getMany();
+  }
 }

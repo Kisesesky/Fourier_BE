@@ -13,6 +13,19 @@ export class MembersService {
     private usersService: UsersService,
   ) {}
 
+  private normalizeMember(member: Member, myUserId: string) {
+    const isRequester = member.requester.id === myUserId;
+    const otherUser = isRequester ? member.recipient : member.requester;
+
+    return {
+      memberId: member.id,
+      userId: otherUser.id,
+      displayName: otherUser.displayName ?? otherUser.name,
+      avatarUrl: otherUser.avatarUrl,
+      status: member.status,
+    }
+  }
+
   /** 친구 요청 보내기 */
   async sendMemberRequest(requesterId: string, recipientEmail: string) {
     const recipient = await this.usersService.findUserByEmail(recipientEmail);
@@ -47,10 +60,17 @@ export class MembersService {
   /** 친구 요청 수락 */
   async acceptMemberRequest(memberId: string, userId: string) {
     const member = await this.memberRepository.findOne({ where: { id: memberId } });
-    if (!member) throw new NotFoundException('친구 요청이 존재하지 않습니다.');
+    
+    if (!member) {
+      throw new NotFoundException('친구 요청이 존재하지 않습니다.');
+    }
 
     if (member.recipient.id !== userId) {
       throw new BadRequestException('본인에게 온 요청만 수락할 수 있습니다.');
+    }
+
+    if (member.status !== 'pending') {
+      throw new BadRequestException('이미 처리된 요청입니다.')
     }
 
     member.status = 'accepted';
@@ -69,6 +89,28 @@ export class MembersService {
     return this.memberRepository.remove(member);
   }
 
+  /** 친구 요청 취소 */
+  async cancelMemberRequest(memberId: string, userId: string) {
+    const member = await this.memberRepository.findOne({
+      where: { id: memberId },
+    });
+
+    if (!member) {
+      throw new NotFoundException('친구 요청이 존재하지 않습니다.');
+    }
+
+    if (member.requester.id !== userId) {
+      throw new BadRequestException('본인이 보낸 요청만 취소할 수 있습니다.');
+    }
+
+    if (member.status !== 'pending') {
+      throw new BadRequestException('이미 처리된 요청입니다.');
+    }
+
+    await this.memberRepository.remove(member);
+    return { success: true };
+  }
+
   /** 친구 차단 */
   async blockMember(memberId: string, userId: string) {
     const member = await this.memberRepository.findOne({ where: { id: memberId } });
@@ -84,19 +126,29 @@ export class MembersService {
 
   /** 친구 목록 조회 */
   async getMembers(userId: string) {
-    return this.memberRepository.find({
+    const members = await this.memberRepository.find({
       where: [
         { requester: { id: userId }, status: 'accepted' },
         { recipient: { id: userId }, status: 'accepted' },
       ],
     });
+
+    return members.map(member => this.normalizeMember(member, userId));
   }
 
   /** 친구 요청 목록 조회 (받은 요청) */
   async getPendingRequests(userId: string) {
-    return this.memberRepository.find({
+    const members = await this.memberRepository.find({
       where: { recipient: { id: userId }, status: 'pending' },
     });
+
+    return members.map(member => ({
+      memberId: member.id,
+      userId: member.requester.id,
+      displayName: member.requester.displayName ?? member.requester.name,
+      avatarUrl: member.requester.avatarUrl,
+      status: member.status,
+    }))
   }
 
   /** 친구 검색 (이메일/이름) */
@@ -111,5 +163,25 @@ export class MembersService {
       )
       .andWhere('(requester.name ILIKE :keyword OR recipient.name ILIKE :keyword)', { keyword: `%${keyword}%` })
       .getMany();
+  }
+
+  /** 친구 여부 */
+  async isFriend(userId: string, targetId: string): Promise<boolean> {
+    const member = await this.memberRepository.findOne({
+      where: [
+        {
+          requester: { id: userId },
+          recipient: { id: targetId },
+          status: 'accepted',
+        },
+        {
+          requester: { id: targetId },
+          recipient: { id: userId },
+          status: 'accepted',
+        },
+      ],
+    });
+
+    return !!member;
   }
 }

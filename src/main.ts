@@ -10,6 +10,8 @@ import { AppModule } from './app.module';
 // Utils
 import { runMigrationsIfNeeded } from './database/run-migrations';
 import { AppConfigService } from './config/app/config.service';
+import { RedisConfigService } from './config/redis/config.service';
+import { RedisIoAdapter } from './config/redis/socket-redis.adapter';
 
 async function bootstrap() {
   // Migration 선 실행 후 
@@ -18,6 +20,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
   const appConfigService = app.get(AppConfigService);
+
+  const redisConfig = app.get(RedisConfigService);
+  const redisIoAdapter = new RedisIoAdapter(app, redisConfig);
+
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   app.use(cookieParser());
 
