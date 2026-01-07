@@ -1,26 +1,28 @@
-import { Injectable } from '@nestjs/common';
-import { CreateWorkspaceDto } from './dto/create-workspace.dto';
-import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Workspace } from './entities/workspace.entity';
+import { WorkspaceMember } from './entities/workspace-member.entity';
 
 @Injectable()
 export class WorkspaceService {
-  create(createWorkspaceDto: CreateWorkspaceDto) {
-    return 'This action adds a new workspace';
-  }
+  constructor(
+    @InjectRepository(Workspace)
+    private readonly workspaceRepository: Repository<Workspace>,
+    @InjectRepository(WorkspaceMember)
+    private readonly workspaceMemberRepository: Repository<WorkspaceMember>,
+  ) {}
 
-  findAll() {
-    return `This action returns all workspace`;
-  }
+  async verifyWorkspaceMember(workspaceId: string, userId: string) {
+    const member = await this.workspaceMemberRepository.findOne({
+      where: {
+        workspace: { id: workspaceId },
+        user: { id: userId },
+      },
+    });
 
-  findOne(id: number) {
-    return `This action returns a #${id} workspace`;
-  }
-
-  update(id: number, updateWorkspaceDto: UpdateWorkspaceDto) {
-    return `This action updates a #${id} workspace`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} workspace`;
+    if (!member) {
+      throw new ForbiddenException('워크스페이스 멤버가 아닙니다.');
+    }
   }
 }

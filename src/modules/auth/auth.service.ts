@@ -140,8 +140,11 @@ export class AuthService {
 
     PasswordUtil.validatePassword(newPassword);
     const hashedPassword = await PasswordUtil.hash(newPassword);
+    // 1. 비밀번호 업데이트
     await this.usersService.updatePassword(email, hashedPassword);
+    // 2. 기존 세션 revoke
     await this.refreshTokenService.deleteRefreshToken(user.id);
+    // 3. 인증 소비
     await this.verificationService.consumeVerification(email, 'password');
     
     return '비밀번호가 성공적으로 변경되었습니다.';

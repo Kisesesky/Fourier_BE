@@ -1,7 +1,7 @@
 // src/modules/workspace/entities/workspace.entity.ts
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
-import { WorkSpaceMember } from "./workspace-member.entity";
-import { Channel } from "./channel.entity";
+import { WorkspaceMember } from "./workspace-member.entity";
+import { Channel } from "../../channel/entities/channel.entity";
 
 @Entity()
 export class Workspace {
@@ -17,8 +17,8 @@ export class Workspace {
   @CreateDateColumn()
   createdAt: Date;
 
-  @OneToMany(() => WorkSpaceMember, (wm) => wm.workspace)
-  members: WorkSpaceMember[];
+  @OneToMany(() => WorkspaceMember, (wm) => wm.workspace)
+  members: WorkspaceMember[];
 
   @OneToMany(() => Channel, (channel) => channel.workspace)
   channels: Channel[];

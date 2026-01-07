@@ -1,3 +1,4 @@
+// src/modules/chat/chat.gateway.ts
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -17,34 +18,28 @@ import { WsJoinRoomDto } from './dto/ws-join-room.dto';
 import { WsReadRoomDto } from './dto/ws-read-room.dto';
 import { WsTypingDto } from './dto/ws-typing.dto';
 import { WsDeleteMessageDto } from './dto/ws-delete-message.dto';
+import { WsJoinChannelDto } from './dto/ws-join-channel.dto';
+import { ChannelChatService } from './channel-chat.service';
+import { WsDeleteChannelMessageDto } from './dto/ws-delete-channel-message.dto';
+import { WsReadChannelDto } from './dto/ws-read-channel.dto';
 
 @WebSocketGateway({
   namespace: '/chat',
   cors: { origin: true },
 })
-export class ChatGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
+
+  private onlineUsers = new Map<string, Set<string>>();
 
   constructor(
     private readonly chatService: ChatService,
     private readonly jwtService: JwtService,
+    private readonly channelChatService: ChannelChatService,
   ) {}
 
-  private onlineUsers = new Map<string, Set<string>>();
-
-
-  @SubscribeMessage('get-online-users')
-  handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
-    const onlineUserIds = Array.from(this.onlineUsers.keys());
-    return { onlineUserIds };
-  }
-
-  /**
-   * STEP 1. WebSocket 연결 시 JWT 인증
-   */
+  /** 1. WebSocket 연결 시 JWT 인증  */
   async handleConnection(client: Socket) {
     try {
       const token = client.handshake.auth?.token;
@@ -70,6 +65,11 @@ export class ChatGateway
       rooms.forEach((room) => {
         client.join(room.id);
       });
+
+      const channelIds = await this.channelChatService.getMyChannelIds(userId);
+      channelIds.forEach((id) => {
+        client.join(`channel:${id}`);
+      });
     } catch (e) {
       client.disconnect();
     }
@@ -94,9 +94,7 @@ export class ChatGateway
     }
   }
 
-  /**
-   * STEP 2. 채팅방 입장
-   */
+  /** 2. 채팅방 입장 */
   @SubscribeMessage('join-room')
   handleJoinRoom(
     @ConnectedSocket() client: Socket,
@@ -110,9 +108,38 @@ export class ChatGateway
     return { joined: body.roomId };
   }
 
-  /**
-   * STEP 3. 메시지 전송
-   */
+  @SubscribeMessage('join-channel')
+  async handleJoinChannel(
+    @ConnectedSocket() client: Socket,
+    @MessageBody(new ValidationPipe({ whitelist: true })) body: WsJoinChannelDto,
+  ) {
+    const userId = client.data.userId;
+    if (!userId) {
+      throw new WsException('인증되지 않은 사용자입니다.');
+    }
+
+    // 1. 채널 접근 권한 확인
+    await this.channelChatService.verifyChannelAccess(
+      body.channelId,
+      userId,
+    );
+
+    // 2. 소켓 room join
+    client.join(`channel:${body.channelId}`);
+
+    // 3. 읽음 처리 (입장 = 읽음 기준점)
+    await this.channelChatService.markChannelAsRead(
+      body.channelId,
+      userId,
+      new Date(),
+    );
+
+    return {
+      joined: body.channelId,
+    };
+  }
+
+  /** 3. 메시지 전송 */
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
@@ -153,9 +180,7 @@ export class ChatGateway
     }
   }
 
-  /**
-   * STEP 4. 읽음 처리 이벤트
-   */
+  /** 4. 읽음 처리 이벤트 */
   @SubscribeMessage('read-room')
   async handleReadRoom(
     @ConnectedSocket() client: Socket,
@@ -174,6 +199,22 @@ export class ChatGateway
     });
   }
 
+  @SubscribeMessage('read-channel')
+  async handleReadChannel(
+    @ConnectedSocket() client: Socket,
+    @MessageBody(new ValidationPipe({ whitelist: true })) body: WsReadChannelDto,
+  ) {
+    const userId = client.data.userId;
+    if (!userId) throw new WsException('인증 필요');
+
+    await this.channelChatService.markChannelAsRead(
+      body.channelId,
+      userId,
+      new Date(body.lastReadAt),
+    );
+  }
+
+  /** 5. 메세지 삭제  */
   @SubscribeMessage('delete-message')
   async handleDeleteMessage(
     @ConnectedSocket() client: Socket,
@@ -203,9 +244,69 @@ export class ChatGateway
     }
   }
 
-  /**
-   * typing event
-   */
+  /** 6. 채널 메시지 전송 */
+  @SubscribeMessage('send-channel-message')
+  async handleSendChannelMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody(new ValidationPipe({ whitelist: true })) body: {
+      channelId: string;
+      content: string;
+      tempId?: string;
+    },
+  ) {
+    const userId = client.data.userId;
+    if (!userId) {
+      throw new WsException('인증되지 않은 사용자입니다.');
+    }
+
+    const message = await this.channelChatService.sendMessage(
+      body.channelId,
+      userId,
+      body.content,
+    );
+
+    // ACK
+    client.emit('message-ack', {
+      tempId: body.tempId,
+      messageId: message.id,
+      createdAt: message.createdAt,
+    });
+
+    // broadcast
+    this.server
+      .to(`channel:${body.channelId}`)
+      .emit('new-channel-message', {
+        id: message.id,
+        channelId: body.channelId,
+        senderId: userId,
+        content: message.content,
+        createdAt: message.createdAt,
+      });
+  }
+
+  /** 7. 채널 메세지 삭제 */
+  @SubscribeMessage('delete-channel-message')
+  async handleDeleteChannelMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody(new ValidationPipe({ whitelist: true })) body: WsDeleteChannelMessageDto,
+  ) {
+    const userId = client.data.userId;
+    if (!userId) {
+      throw new WsException('인증되지 않은 사용자입니다.');
+    }
+
+    const result = await this.channelChatService.deleteMessage(body.messageId, userId);
+
+    this.server.to(`channel:${result.channelId}`).emit(
+      'channel-message-updated',
+      {
+        messageId: result.messageId,
+        content: result.content,
+      },
+    );
+  }
+
+  /** 8. typing event */
   @SubscribeMessage('typing-start')
   handleTypingStart(
     @ConnectedSocket() client: Socket,
@@ -238,5 +339,29 @@ export class ChatGateway
       userId,
       isTyping: false,
     });
+  }
+
+  @SubscribeMessage('get-channel-messages')
+  async handleGetChannelMessages(
+    @ConnectedSocket() client: Socket,
+    @MessageBody(new ValidationPipe({ whitelist: true })) body: { 
+      channelId: string;
+      limit?: number;
+      cursor?: string;
+    },
+  ) {
+    const userId = client.data.userId;
+    if (!userId) {
+      throw new WsException('인증되지 않은 사용자입니다.');
+    }
+
+    const messages = await this.channelChatService.getChannelMessages(
+      body.channelId,
+      userId,
+      body.limit || 20,
+      body.cursor,
+    );
+
+    return messages;
   }
 }

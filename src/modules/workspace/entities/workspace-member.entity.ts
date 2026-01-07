@@ -3,11 +3,15 @@ import { User } from "src/modules/users/entities/user.entity";
 import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, Unique } from "typeorm";
 import { Workspace } from "./workspace.entity";
 
-export type roleStatus = 'owner' | 'admin' | 'member';
+export enum WorkspaceMemberRole {
+  OWNER ='owner',
+  ADMIN = 'admin',
+  MEMBER = 'member'
+}
 
 @Entity()
 @Unique(['user', 'workspace'])
-export class WorkSpaceMember {
+export class WorkspaceMember {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -17,8 +21,8 @@ export class WorkSpaceMember {
   @ManyToOne(() => Workspace, (ws) => ws.members, { onDelete: 'CASCADE' })
   workspace: Workspace;
 
-  @Column({ default: 'member' })
-  role: roleStatus;
+  @Column({ type: 'enum', enum: WorkspaceMemberRole, default: WorkspaceMemberRole.MEMBER })
+  role: WorkspaceMemberRole;
 
   @CreateDateColumn()
   joinedAt: Date;

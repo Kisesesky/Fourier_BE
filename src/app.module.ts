@@ -16,11 +16,12 @@ import { DatabaseModule } from './modules/database/database.module';
 import { GcsModule } from './modules/gcs/gcs.module';
 import { VerificationModule } from './modules/verification/verification.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { ChannelModule } from './modules/channel/channel.module';
 
 @Module({
   imports: [
     DatabaseModule,
-    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, WorksheetsModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule],
+    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, WorksheetsModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, ChannelModule],
   controllers: [AppController],
   providers: [AppService],
 })

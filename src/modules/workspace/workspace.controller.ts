@@ -1,34 +1,24 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
-import { CreateWorkspaceDto } from './dto/create-workspace.dto';
-import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { RequestUser } from 'src/common/decorators/request-user.decorator';
+import { User } from '../users/entities/user.entity';
+import { WorkspaceChannelFacade } from './workspace-channel.facade';
 
 @Controller('workspace')
 export class WorkspaceController {
-  constructor(private readonly workspaceService: WorkspaceService) {}
+  constructor(
+    private readonly workspaceService: WorkspaceService,
+    private readonly workspaceChannelFacade: WorkspaceChannelFacade,
+  ) {}
 
-  @Post()
-  create(@Body() createWorkspaceDto: CreateWorkspaceDto) {
-    return this.workspaceService.create(createWorkspaceDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.workspaceService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.workspaceService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateWorkspaceDto: UpdateWorkspaceDto) {
-    return this.workspaceService.update(+id, updateWorkspaceDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.workspaceService.remove(+id);
+  @Get(':workspaceId/channels')
+  async getWorkspaceChannels(
+    @RequestUser() user: User,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspaceChannelFacade.getWorkspaceChannelsMeta(
+      workspaceId,
+      user.id,
+    )
   }
 }

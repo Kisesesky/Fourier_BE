@@ -110,10 +110,11 @@ export class AuthController {
   @ApiOperation({ summary: '로그아웃'})
   @Post('sign-out')
   async signOut (
+    @RequestUser() user: User,
     @RequestOrigin() origin: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessOptions, refreshOptions } = await this.authService.signOut(undefined, origin);
+    const { accessOptions, refreshOptions } = await this.authService.signOut(user?.id, origin);
 
     res.cookie('access_token', '', accessOptions);
     res.cookie('refresh_token', '', refreshOptions);

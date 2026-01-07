@@ -41,6 +41,6 @@ import { VerificationModule } from '../verification/verification.module';
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, GoogleStrategy, GitHubStrategy, KakaoStrategy, NaverStrategy, RefreshTokenService, AuthTokenService],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
