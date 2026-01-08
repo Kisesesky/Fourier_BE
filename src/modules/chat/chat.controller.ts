@@ -1,3 +1,4 @@
+// src/modules/chat/chat.controller.ts
 import { Controller, Post, Param, UseGuards, Body, Get, Query } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';

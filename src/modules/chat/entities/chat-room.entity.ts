@@ -1,3 +1,4 @@
+// src/modules/chat/entities/chat-room.entity.ts
 import { BaseEntity } from "src/common/entities/base.entity";
 import { User } from "src/modules/users/entities/user.entity";
 import { Column, Entity, ManyToOne, Unique } from "typeorm";

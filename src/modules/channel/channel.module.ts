@@ -11,10 +11,13 @@ import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports:[
-      TypeOrmModule.forFeature([Channel, ChannelMember]),
+      TypeOrmModule.forFeature([Channel, ChannelMember, WorkspaceMember]),
+      UsersModule,
+      forwardRef(() => WorkspaceModule),
+      forwardRef(() => ChatModule),
     ],
   controllers: [ChannelController],
   providers: [ChannelService],
-  exports: [ChannelService],
+  exports: [ChannelService, TypeOrmModule],
 })
 export class ChannelModule {}

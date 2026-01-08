@@ -11,8 +11,8 @@ import { ChatModule } from '../chat/chat.module';
 @Module({
   imports:[
     TypeOrmModule.forFeature([WorkspaceMember, Workspace]),
-    ChatModule,
-    ChannelModule,
+    forwardRef(() => ChatModule),
+    forwardRef(() => ChannelModule),
   ],
   controllers: [WorkspaceController],
   providers: [WorkspaceService, WorkspaceChannelFacade],

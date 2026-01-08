@@ -1,3 +1,4 @@
+// src/modules/chat/chat.service.ts
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MembersService } from '../members/members.service';
 import { ChatRoom } from './entities/chat-room.entity';
