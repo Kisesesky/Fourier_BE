@@ -1,63 +1,61 @@
 // src/modules/chat/chat.controller.ts
-import { Controller, Post, Param, UseGuards, Body, Get, Query } from '@nestjs/common';
+import { Controller, Get, Post,  Body, Query, UseGuards } from '@nestjs/common';
 import { ChatService } from './chat.service';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
 import { User } from '../users/entities/user.entity';
-import { AuthGuard } from '@nestjs/passport';
-import { SendMessageDto } from './dto/send-message.dto';
+import { SendChannelMessageDto } from './dto/send-channel-message.dto';
+import { SendDmMessageDto } from './dto/send-dm-message.dto';
+import { GetMessagesDto } from './dto/get-messages.dto';
+import { MessageResponseDto } from './dto/message-response.dto';
 
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
 @ApiTags('chat')
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
-  
-  @ApiOperation({ summary: '채팅방 생성' })
-  @Post(':targetId')
-  createOrGetRoom(
+  constructor(
+    private readonly chatService: ChatService
+  ) {}
+
+  @ApiOperation({ summary: '채널에서 메시지 보내기'})
+  @ApiOkResponse({ type: MessageResponseDto })
+  @Post('channel/message')
+  async sendChannelMessage(
     @RequestUser() user: User,
-    @Param('targetId') targetId: string
+    @Body() sendChannelMessageDto: SendChannelMessageDto
   ) {
-    return this.chatService.getOrCreateRoom(user.id, targetId);
+    return this.chatService.sendChannelMessage(user, sendChannelMessageDto);
   }
 
-  @ApiOperation({ summary: '메세지 보내기' })
-  @Post(':roomId/messages')
-  sendMessage(
+  @ApiOperation({ summary: '채널에서 메세지 목록'})
+  @ApiOkResponse({ type: [MessageResponseDto] })
+  @Get('channel/messages')
+  async getChannelMessages(
     @RequestUser() user: User,
-    @Param('roomId') roomId: string,
-    @Body() sendMessageDto: SendMessageDto,
-  ) {
-    return this.chatService.sendMessage(roomId, user.id, sendMessageDto.content);
+    @Query() getMessagesDto: GetMessagesDto
+  ): Promise<MessageResponseDto[]> {
+    return this.chatService.getChannelMessages(getMessagesDto.id, user, getMessagesDto.limit, getMessagesDto.cursor);
   }
 
-  @ApiOperation({ summary: '내 채팅방 찾기' })
-  @Get('room')
-  getMyRooms(@RequestUser() user: User) {
-    return this.chatService.getMyRooms(user.id)
-  }
-
-  @ApiOperation({ summary: '내 채팅 찾기' })
-  @Get('message')
-  getMyChats(@RequestUser() user: User) {
-    return this.chatService.getMyChats(user.id)
-  }
-
-  @ApiOperation({ summary: '메세지 목록 조회' })
-  @Get(':roomId/messages')
-  getMessages(
+  @ApiOperation({ summary: '메시지 보내기'})
+  @ApiOkResponse({ type: MessageResponseDto })
+  @Post('dm/message')
+  async sendDmMessage(
     @RequestUser() user: User,
-    @Param('roomId') roomId: string,
-    @Query('cursor') cursor? : string,
-    @Query('limit') limit?: number,
+    @Body() sendDmMessageDto: SendDmMessageDto
   ) {
-    return this.chatService.getMessages(
-      roomId,
-      user.id,
-      Number(limit) || 20,
-      cursor,
-    )
+    return this.chatService.sendDM(user, sendDmMessageDto);
+  }
+
+  @ApiOperation({ summary: '메시지 가져오기'})
+  @ApiOkResponse({ type: [MessageResponseDto] })
+  @Get('dm/messages')
+  async getDmMessages(
+    @RequestUser() user: User,
+    @Query() getMessagesDto: GetMessagesDto
+  ): Promise<MessageResponseDto[]> {
+    return this.chatService.getDmMessages(getMessagesDto.id, user, getMessagesDto.limit, getMessagesDto.cursor);
   }
 }

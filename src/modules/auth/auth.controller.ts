@@ -13,12 +13,13 @@ import { AppConfigService } from 'src/config/app/config.service';
 import { KakaoAuthGuard } from './guards/kakao-auth.guard';
 import { NaverAuthGuard } from './guards/naver-auth.guard';
 import { GitHubAuthGuard } from './guards/github-auth.guard';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { User } from '../users/entities/user.entity';
 import { SocialProfile } from 'src/common/constants/register-status';
 import { GcsService } from '../gcs/gcs.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ChangePasswordDto, PasswordDto } from '../verification/dto/password.dto';
+import { AuthResponseDto } from './dto/auth-response.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -51,7 +52,7 @@ export class AuthController {
       refreshToken,
       accessOptions,
       refreshOptions,
-    } = this.authTokenService.generateTokens(user.email, origin);
+    } = this.authTokenService.generateTokens(user.id, origin);
 
     res.cookie('access_token', accessToken, accessOptions);
     res.cookie('refresh_token', refreshToken, refreshOptions);
@@ -65,6 +66,7 @@ export class AuthController {
   @ApiOperation({ summary: '내 정보 조회'})
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('access-token')
+  @ApiOkResponse({ type: UserResponseDto })
   @Get('profile')
   getProfile(
     @RequestUser() user: User,
@@ -75,6 +77,21 @@ export class AuthController {
   @ApiOperation({ summary: '회원가입'})
   @Post('sign-up')
   @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'name', 'password', 'agreedTerms', 'agreedPrivacy'],
+      properties: {
+        avatar: { type: 'string', format: 'binary' },
+        email: { type: 'string', example: 'test@test.com' },
+        name: { type: 'string', example: 'tester' },
+        displayName: { type: 'string', example: 'tester', nullable: true },
+        password: { type: 'string', example: 'Password123!' },
+        agreedTerms: { type: 'boolean', example: true },
+        agreedPrivacy: { type: 'boolean', example: true },
+      },
+    },
+  })
   @UseInterceptors(FileInterceptor('avatar', {
     limits: { fileSize: 5 * 1024 * 1024},
     fileFilter: (req, file, cb) => {
@@ -99,6 +116,9 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: '로그인'})
+  @ApiOkResponse({ type: AuthResponseDto })
+  @ApiBearerAuth('access-token')
+  @UseGuards(AuthGuard('jwt'))
   @Post('sign-in')
   async signIn (
     @Body() signInDto: SignInDto,
@@ -108,6 +128,14 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: '로그아웃'})
+  @ApiOkResponse({
+    schema: {
+      example: {
+        success: true,
+        message: '성공적으로 로그아웃이 되었습니다.',
+      },
+    },
+  })
   @Post('sign-out')
   async signOut (
     @RequestUser() user: User,
@@ -125,7 +153,7 @@ export class AuthController {
     };
   }
 
-  @ApiOperation({ summary: '구글 로그인'})
+  @ApiOperation({ summary: '구글 로그인', description: 'Swagger에서 직접 호출 불가 (브라우저 리다이렉트 전용)' })
   @UseGuards(GoogleAuthGuard)
   @Get('google')
   async googleSignIn() {
@@ -144,7 +172,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
-  @ApiOperation({ summary: '카카오 로그인'})
+  @ApiOperation({ summary: '카카오 로그인', description: 'Swagger에서 직접 호출 불가 (브라우저 리다이렉트 전용)' })
   @UseGuards(KakaoAuthGuard)
   @Get('kakao')
   async kakaoSignIn() {
@@ -163,7 +191,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
-  @ApiOperation({ summary: '네이버 로그인'})
+  @ApiOperation({ summary: '네이버 로그인', description: 'Swagger에서 직접 호출 불가 (브라우저 리다이렉트 전용)' })
   @UseGuards(NaverAuthGuard)
   @Get('naver')
   async naverSignIn() {
@@ -182,7 +210,7 @@ export class AuthController {
     return this.handleSocialCallback(req.user, origin, res);
   }
 
-  @ApiOperation({ summary: '깃허브 로그인'})
+  @ApiOperation({ summary: '깃허브 로그인', description: 'Swagger에서 직접 호출 불가 (브라우저 리다이렉트 전용)' })
   @UseGuards(GitHubAuthGuard)
   @Get('github')
   async githubSignIn() {
@@ -204,6 +232,14 @@ export class AuthController {
   @ApiOperation({ summary: '비밀번호 변경'})
   @ApiBearerAuth('access-token')
   @UseGuards(AuthGuard('jwt'))
+  @ApiOkResponse({
+    schema: {
+      example: {
+        success: true,
+        message: '비밀번호가 성공적으로 변경되었습니다. 로그인페이지로 이동합니다.',
+      },
+    },
+  })
   @Post('change-password')
   async changePassword(
     @RequestUser() user: User,
@@ -217,15 +253,29 @@ export class AuthController {
       changePasswordDto.confirmPassword,
     );
 
-    const { accessToken, refreshToken, accessOptions, refreshOptions } = this.authTokenService.generateTokens(user.email, origin);
+    const { accessToken, refreshToken, accessOptions, refreshOptions } = this.authTokenService.generateTokens(user.id, origin);
 
-    return { success: true, message }
+    return {
+      success: true,
+      message: '비밀번호가 성공적으로 변경되었습니다. 로그인페이지로 이동합니다.',
+    }
   }
 
   @ApiOperation({ summary: '비밀번호 초기화'})
+  @ApiOkResponse({
+    schema: {
+      example: {
+        success: true,
+        message: '비밀번호가 성공적으로 변경되었습니다. 로그인페이지로 이동합니다.',
+      },
+    },
+  })
   @Post('reset-password')
   async resetPassword(@Body() passwordDto: PasswordDto) {
     const message = await this.authService.resetPassword(passwordDto.email, passwordDto.newPassword, passwordDto.confirmPassword);
-    return { success: true, message };
+    return {
+      success: true,
+      message: '비밀번호가 성공적으로 변경되었습니다. 로그인페이지로 이동합니다.',
+    };
   }
 }

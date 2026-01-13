@@ -39,11 +39,15 @@ export class GcsConfigService {
     }
   
     const secretName = this.gcsSecretName;
-    if (!secretName) throw new Error('GCS Secret 이름이 없습니다');
+    if (!secretName) {
+      throw new Error('GCS Secret 이름이 없습니다');
+    }
     const client = new SecretManagerServiceClient();
     const [version] = await client.accessSecretVersion({ name: secretName });
     const payload = version.payload?.data?.toString('utf8');
-    if (!payload) throw new Error('서비스 계정 키 로드 실패');
+    if (!payload) {
+      throw new Error('서비스 계정 키 로드 실패');
+    }
     const tempPath = path.join('/tmp', 'gcp-service-account.json');
     await fs.writeFile(tempPath, payload, { mode: 0o600 }); // 퍼미션 최소화
     return tempPath;

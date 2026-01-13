@@ -1,34 +1,29 @@
 // src/modules/chat/chat.module.ts
-import { forwardRef, Module } from '@nestjs/common';
-import { ChatService } from './chat.service';
-import { ChatController } from './chat.controller';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ChatMessage } from './entities/chat-message.entity';
-import { ChatRoom } from './entities/chat-room.entity';
-import { UsersModule } from '../users/users.module';
-import { MembersModule } from '../members/members.module';
+import { ChatService } from './chat.service';
+import { ChatGateway } from './gateways/chat.gateway';
+import { DmRoom } from './entities/dm-room.entity';
+import { DmMessage } from './entities/dm-message.entity';
+import { Channel } from './entities/channel.entity';
 import { ChannelMessage } from './entities/channel-message.entity';
-import { ChannelChatService } from './channel-chat.service';
-import { Channel } from '../channel/entities/channel.entity';
-import { ChannelMember } from '../channel/entities/channel-member.entity';
-import { AuthModule } from '../auth/auth.module';
-import { ChannelModule } from '../channel/channel.module';
-import { ChannelGateway } from './gateways/channel.gateway';
-import { MessageGateway } from './gateways/message.gateway';
-import { WorkspaceModule } from '../workspace/workspace.module';
-import { GatewayService } from './gateways/gateway.service';
+import { ProjectMember } from '../projects/entities/project-member.entity';
+import { User } from '../users/entities/user.entity';
+import { AppConfigModule } from 'src/config/app/config.module';
+import { ChatController } from './chat.controller';
+import { MessageFile } from './entities/message-file.entity';
+import { FilesModule } from '../files/files.module';
+import { MessageReaction } from './entities/message-reaction.entity';
+import { ThreadRead } from './entities/thread-read.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatRoom, ChatMessage, Channel, ChannelMessage, ChannelMember]),
-    UsersModule,
-    MembersModule,
-    AuthModule,
-    forwardRef(() => ChannelModule),
-    forwardRef(() => WorkspaceModule),
+    TypeOrmModule.forFeature([DmRoom, DmMessage, Channel, ChannelMessage, ProjectMember, User, MessageFile, MessageReaction, ThreadRead]),
+    AppConfigModule,
+    FilesModule,
   ],
   controllers: [ChatController],
-  providers: [ChatService, ChannelChatService, GatewayService, ChannelGateway, MessageGateway],
-  exports: [ChatService, ChannelChatService, GatewayService],
+  providers: [ChatService, ChatGateway],
+  exports: [ChatService],
 })
 export class ChatModule {}

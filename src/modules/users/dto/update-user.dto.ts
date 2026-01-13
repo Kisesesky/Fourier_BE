@@ -8,13 +8,4 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(2)
   displayName?: string;
-
-  @ApiProperty({
-    type: 'string',
-    format: 'binary',
-    description: '프로필 이미지 파일',
-    required: false,
-  })
-  @IsOptional()
-  avatarFile?: Express.Multer.File;
 }

@@ -1,26 +1,242 @@
-import { Injectable } from '@nestjs/common';
-import { CreateDocDto } from './dto/create-doc.dto';
-import { UpdateDocDto } from './dto/update-doc.dto';
+// src/module/docs/docs.service.ts
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
+import { Folder } from './entities/folder.entity';
+import { Document } from './entities/document.entity';
+import { DocumentVersion } from './entities/document-version.entity';
+import { User } from '../users/entities/user.entity';
+import { CreateFolderDto } from './dto/create-folder.dto';
+import { CreateDocumentDto } from './dto/create-document.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
+import { DocumentCursor } from './entities/document-cursor.entity';
+import * as Y from 'yjs';
+import { FolderMember } from './entities/folder-member.entity';
+import { DocumentMember } from './entities/document-member.entity';
+import { DocPermission } from './constants/doc-permission.enum';
+import { NotificationService } from '../notification/notification.service';
+import { DocPermissionService } from './services/doc-permission.service';
+import { extractMentions } from './utils/mention.util';
+import { EditOptionDto } from './dto/edit-document.dto';
+import { UpdateDocPermissionDto } from './dto/update-document-permission.dto';
+import { NotificationType } from '../notification/constants/notification-type.enum';
 
 @Injectable()
 export class DocsService {
-  create(createDocDto: CreateDocDto) {
-    return 'This action adds a new doc';
+  private ydocs = new Map<string, Y.Doc>(); // 메모리 상 CRDT 문서 저장
+
+  constructor(
+    @InjectRepository(Document)
+    private readonly documentRepository: Repository<Document>,
+    @InjectRepository(DocumentVersion)
+    private readonly documentVersionRepository: Repository<DocumentVersion>,
+    @InjectRepository(DocumentCursor)
+    private readonly documentCursorRepository: Repository<DocumentCursor>,
+    @InjectRepository(Folder)
+    private readonly folderRepository: Repository<Folder>,
+    @InjectRepository(DocumentMember)
+    private readonly documentMemberRepository: Repository<DocumentMember>,
+    @InjectRepository(FolderMember)
+    private readonly folderMemberRepository: Repository<FolderMember>,
+    private readonly notificationService: NotificationService,
+    private readonly documentPermissionService: DocPermissionService,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+  ) {}
+
+  async createFolder(dto: CreateFolderDto, user: User) {
+    const parent = dto.parentId
+      ? await this.folderRepository.findOneBy({ id: dto.parentId })
+      : null;
+
+    const folder = await this.folderRepository.save({
+      name: dto.name,
+      parent,
+      owner: user,
+    });
+
+    await this.folderMemberRepository.save({
+      folder,
+      user,
+      permission: DocPermission.ADMIN,
+    });
+
+    return folder;
   }
 
-  findAll() {
-    return `This action returns all docs`;
+  async moveFolder(id: string, parentId?: string) {
+    const folder = await this.folderRepository.findOneBy({ id });
+    folder.parent = parentId
+      ? await this.folderRepository.findOneBy({ id: parentId })
+      : null;
+    return this.folderRepository.save(folder);
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} doc`;
+  async removeFolder(id: string) {
+    return this.folderRepository.delete(id);
   }
 
-  update(id: number, updateDocDto: UpdateDocDto) {
-    return `This action updates a #${id} doc`;
+  /* -------------------- Document -------------------- */
+
+  async createDocument(dto: CreateDocumentDto, user: User) {
+    const folder = dto.folderId
+      ? await this.folderRepository.findOneBy({ id: dto.folderId })
+      : null;
+
+    const doc = await this.documentRepository.save({
+      title: dto.title,
+      content: dto.content ?? '',
+      folder,
+      author: user,
+    });
+
+    await this.documentMemberRepository.save({
+      document: doc,
+      user,
+      permission: DocPermission.ADMIN,
+    });
+
+    await this.saveVersion(doc, user);
+
+    return doc;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} doc`;
+  async updateDocument(id: string, dto: UpdateDocumentDto, user: User) {
+    const doc = await this.documentRepository.findOneBy({ id });
+    Object.assign(doc, dto);
+    await this.documentRepository.save(doc);
+    await this.saveVersion(doc, user);
+    return doc;
+  }
+
+  async removeDocument(id: string) {
+    this.ydocs.delete(id);
+    return this.documentRepository.delete(id);
+  }
+
+  async updateDocumentPermission(
+    documentId: string,
+    dto: UpdateDocPermissionDto,
+  ) {
+    const doc = await this.documentRepository.findOneBy({ id: documentId });
+
+    return this.documentMemberRepository.save({
+      document: doc,
+      user: { id: dto.userId } as User,
+      permission: dto.permission,
+    });
+  }
+
+  /* -------------------- Version -------------------- */
+
+  async saveVersion(doc: Document, user: User) {
+    return this.documentVersionRepository.save({
+      document: doc,
+      editor: user,
+      content: doc.content,
+    });
+  }
+
+  async getVersions(id: string) {
+    return this.documentVersionRepository.find({
+      where: { document: { id } },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /* -------------------- Real-time -------------------- */
+
+  async getYDoc(id: string): Promise<Y.Doc> {
+    if (this.ydocs.has(id)) return this.ydocs.get(id);
+
+    const doc = await this.documentRepository.findOneBy({ id });
+    const ydoc = new Y.Doc();
+    ydoc.getText('content').insert(0, doc.content ?? '');
+    this.ydocs.set(id, ydoc);
+
+    setTimeout(() => this.ydocs.delete(id), 1000 * 60 * 30);
+    return ydoc;
+  }
+
+  async applyOps(documentId: string, user: User, ops: EditOptionDto[]) {
+    const doc = await this.documentRepository.findOne({
+      where: { id: documentId },
+      relations: ['folder'],
+    });
+
+    const permission = await this.documentPermissionService.getUserPermission(
+      user.id,
+      doc,
+    );
+
+    if (!permission || permission === DocPermission.READ) {
+      throw new ForbiddenException();
+    }
+
+    const ydoc = await this.getYDoc(documentId);
+    const ytext = ydoc.getText('content');
+
+    for (const op of ops) {
+      if (op.type === 'insert') {
+        ytext.insert(op.position, op.text ?? '');
+      }
+      if (op.type === 'delete') {
+        ytext.delete(op.position, op.length ?? 0);
+      }
+    }
+
+    doc.content = ytext.toString();
+    await this.documentRepository.save(doc);
+    await this.saveVersion(doc, user);
+    await this.handleMentions(doc, user);
+
+    return doc;
+  }
+
+  async updateCursor(documentId: string, user: User, position: number) {
+    return this.documentCursorRepository.upsert(
+      {
+        document: { id: documentId },
+        user,
+        position,
+      },
+      ['document', 'user'],
+    );
+  }
+
+  async searchDocs(userId: string, keyword: string) {
+    return this.documentRepository
+      .createQueryBuilder('doc')
+      .leftJoin('doc.folder', 'folder')
+      .leftJoin(DocumentMember, 'dm', 'dm.documentId = doc.id')
+      .leftJoin(FolderMember, 'fm', 'fm.folderId = folder.id')
+      .where('(dm.userId = :userId OR fm.userId = :userId)', { userId })
+      .andWhere(`doc.searchVector @@ plainto_tsquery(:q)`, { q: keyword })
+      .select(['doc.id', 'doc.title', 'doc.updatedAt'])
+      .getMany();
+  }
+
+  private async handleMentions(doc: Document, editor: User) {
+    const usernames = extractMentions(doc.content || '');
+    if (!usernames.length) return;
+
+    const users = await this.usersRepository.find({ where: { name: In(usernames) } });
+
+    for (const user of users) {
+      if (user.id === editor.id) continue;
+
+      const perm = await this.documentPermissionService.getUserPermission(user.id, doc);
+      if (!perm) continue;
+
+      await this.notificationService.create({
+        user,
+        type: NotificationType.DOCMENTION,
+        payload: {
+          documentId: doc.id,
+          title: doc.title,
+          fromUserId: editor.id,
+        },
+      });
+    }
   }
 }

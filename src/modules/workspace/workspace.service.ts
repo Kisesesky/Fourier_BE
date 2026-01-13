@@ -1,28 +1,40 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+// src/modules/workspace/workspace.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Workspace } from './entities/workspace.entity';
-import { WorkspaceMember } from './entities/workspace-member.entity';
+import { User } from '../users/entities/user.entity';
+import { WorkspaceResponseDto } from './dto/workspace-response.dto';
 
 @Injectable()
 export class WorkspaceService {
   constructor(
     @InjectRepository(Workspace)
     private readonly workspaceRepository: Repository<Workspace>,
-    @InjectRepository(WorkspaceMember)
-    private readonly workspaceMemberRepository: Repository<WorkspaceMember>,
   ) {}
 
-  async verifyWorkspaceMember(workspaceId: string, userId: string) {
-    const member = await this.workspaceMemberRepository.findOne({
-      where: {
-        workspace: { id: workspaceId },
-        user: { id: userId },
-      },
+  async createDefaultWorkspace(user: User) {
+    const workspace = this.workspaceRepository.create({
+      name: `${user.displayName ?? user.name}'s Workspace`,
+      createdBy: { id: user.id } as User,
     });
 
-    if (!member) {
-      throw new ForbiddenException('워크스페이스 멤버가 아닙니다.');
+    return this.workspaceRepository.save(workspace);
+  }
+
+  async getMyWorkspace(user: User): Promise<WorkspaceResponseDto> {
+    const workspace = await this.workspaceRepository.findOne({
+      where: { createdBy: { id: user.id } },
+      relations: ['teams'],
+    });
+    if (!workspace) {
+      throw new NotFoundException('워크스페이스가 없습니다.');
     }
+
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      createdAt: workspace.createdAt,
+    };
   }
 }

@@ -1,7 +1,7 @@
 // src/modules/workspace/entities/workspace.entity.ts
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
-import { WorkspaceMember } from "./workspace-member.entity";
-import { Channel } from "../../channel/entities/channel.entity";
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, ManyToOne } from 'typeorm';
+import { Team } from '../../team/entities/team.entity';
+import { User } from 'src/modules/users/entities/user.entity';
 
 @Entity()
 export class Workspace {
@@ -11,15 +11,12 @@ export class Workspace {
   @Column()
   name: string;
 
-  @Column({ nullable: true })
-  iconUrl?: string;
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  createdBy: User;
+
+  @OneToMany(() => Team, (team) => team.workspace)
+  teams: Team[];
 
   @CreateDateColumn()
   createdAt: Date;
-
-  @OneToMany(() => WorkspaceMember, (wm) => wm.workspace)
-  members: WorkspaceMember[];
-
-  @OneToMany(() => Channel, (channel) => channel.workspace)
-  channels: Channel[];
 }

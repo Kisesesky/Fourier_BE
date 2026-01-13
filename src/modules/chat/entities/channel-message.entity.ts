@@ -1,24 +1,58 @@
 // src/modules/chat/entities/channel-message.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
-import { Channel } from '../../channel/entities/channel.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinTable, ManyToMany, OneToMany } from 'typeorm';
+import { Channel } from './channel.entity';
 import { User } from '../../users/entities/user.entity';
+import { MessageType } from '../constants/message-type.enum';
+import { MessageFile } from './message-file.entity';
+import { MessageReaction } from './message-reaction.entity';
 
 @Entity()
 export class ChannelMessage {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => Channel, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Channel, (channel) => channel.messages, { onDelete: 'CASCADE' })
   channel: Channel;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   sender: User;
 
-  @Column()
-  content: string;
+  @Column({ type: 'enum', enum: MessageType, default: MessageType.TEXT })
+  type: MessageType;
+
+  @Column({ type: 'text', nullable: true })
+  content?: string;
+
+  @Column({ type: 'text', nullable: true })
+  preview?: string;
+
+  @OneToMany(() => MessageFile, (messagefile) => messagefile.channelMessage)
+  files: MessageFile[];
+
+  @ManyToMany(() => User)
+  @JoinTable()
+  readBy: User[];
+
+  @Column({ type: 'timestamp', nullable: true })
+  editedAt?: Date;
 
   @Column({ default: false })
   isDeleted: boolean;
+
+  @ManyToOne(() => ChannelMessage, (message) => message.replies, { nullable: true, onDelete: 'CASCADE' })
+  parentMessage?: ChannelMessage;
+
+  @OneToMany(() => ChannelMessage, (message) => message.parentMessage)
+  replies: ChannelMessage[];
+
+  @Column({ default: 0 })
+  replyCount: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastReplyAt?: Date;
+
+  @OneToMany(() => MessageReaction, (reaction) => reaction.channelMessage)
+  reactions: MessageReaction[];
 
   @CreateDateColumn()
   createdAt: Date;

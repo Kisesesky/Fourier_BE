@@ -51,7 +51,7 @@ export class AuthService {
 
   async signIn(signInDto: SignInDto, origin: string): Promise<AuthResponseDto> {
     const user = await this.validateCredentials(signInDto);
-    const tokens = this.authTokenService.generateTokens(user.email, origin);
+    const tokens = this.authTokenService.generateTokens(user.id, origin);
 
     await this.refreshTokenService.saveRefreshToken(
       user.id,

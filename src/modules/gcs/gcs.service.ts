@@ -23,7 +23,7 @@ export class GcsService {
     this.bucketName = this.gcsConfig.gcsBucketName!;
   }
 
-  async uploadFile(file: Express.Multer.File, destination?: string) {
+  async uploadImageFile(file: Express.Multer.File, destination?: string) {
     try {
       const fileName = destination || `profile/${Date.now()}_${uuidv4()}_${file.originalname}`;
       const bucket = this.storage.bucket(this.bucketName);
@@ -41,6 +41,53 @@ export class GcsService {
     }
   }
 
+  async uploadFile(file: Express.Multer.File, destination?: string) {
+    try {
+      const fileName = destination || `profile/${Date.now()}_${uuidv4()}_${file.originalname}`;
+      const bucket = this.storage.bucket(this.bucketName);
+      const gcsFile = bucket.file(fileName);
+
+      await gcsFile.save(file.buffer, {
+        contentType: file.mimetype,
+      });
+
+      return `https://storage.googleapis.com/${this.bucketName}/${gcsFile.name}`;
+    } catch (error) {
+      this.logger.error('GCS 파일 업로드 실패', error.stack || error);
+      throw error;
+    }
+  }
+
+  async uploadTextAsFile(
+    content: string,
+    filename?: string,
+  ) {
+    try {
+      const fileName = filename ?? `documents/${Date.now()}_${uuidv4()}.txt`;
+      const bucket = this.storage.bucket(this.bucketName);
+      const gcsFile = bucket.file(fileName);
+
+      await gcsFile.save(content, { contentType: 'text/plain' });
+
+      return {
+        fileUrl: `https://storage.googleapis.com/${this.bucketName}/${gcsFile.name}`,
+        fileName: fileName.split('/').pop(),
+        mimeType: 'text/plain',
+        fileSize: Buffer.byteLength(content),
+      };
+    } catch (error) {
+      this.logger.warn('GCS 파일 삭제 실패', error);
+      throw error;
+    }
+  }
+
+  async generateThumbnail(
+    file: Express.Multer.File,
+    fileId: string,
+  ): Promise<string> {
+    return `https://storage.googleapis.com/thumbnails/${fileId}.png`;
+  }
+
   async deleteFile(fileUrl: string) {
     try {
       const filePath = fileUrl.split(`/${this.bucketName}/`)[1];
@@ -48,6 +95,7 @@ export class GcsService {
       await this.storage.bucket(this.bucketName).file(filePath).delete();
     } catch (error) {
       this.logger.warn('GCS 파일 삭제 실패', error);
+      throw error;
     }
   }
 }

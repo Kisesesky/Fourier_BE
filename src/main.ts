@@ -67,12 +67,15 @@ async function bootstrap() {
     .addTag('auth', '인증 및 사용자 관련 API')
     .addTag('verification', '인증 관련 API')
     .addTag('gcs', 'GCS 관련 API')
+    .addTag('workspace', 'Workspace 관련 API')
+    .addTag('team', 'Team 관련 API')
+    .addTag('projects', 'Project 관련 API')
     .addTag('members', '친구 관련 API')
-    .addTag('worksheets', 'Worksheet 관련 API')
+    .addTag('chat', '채팅 관련 API')
     .addTag('docs', '문서 관련 API')
     .addTag('issues', '이슈 관련 API')
-    .addTag('chat', '채팅 관련 API')
     .addTag('calendar', '캘린더 관련 API')
+    .addTag('notifications', '알람 관련 API')
     .addBearerAuth(
       {
         type: 'http',

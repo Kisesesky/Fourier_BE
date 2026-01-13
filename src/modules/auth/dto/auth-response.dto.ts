@@ -3,7 +3,7 @@ import { UserResponseDto } from 'src/modules/users/dto/user-response.dto';
 import { User } from 'src/modules/users/entities/user.entity';
 
 export class AuthResponseDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'JWT Access Token', example: 'token'})
   accessToken: string;
 
   @ApiProperty({ required: false })

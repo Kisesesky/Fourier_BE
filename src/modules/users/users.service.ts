@@ -7,6 +7,7 @@ import { SignUpDto } from '../auth/dto/sign-up.dto';
 import { REGISTER_STATUS, RegisterStatus } from 'src/common/constants/register-status';
 import { GcsService } from '../gcs/gcs.service';
 import { AppConfigService } from 'src/config/app/config.service';
+import { WorkspaceService } from '../workspace/workspace.service';
 
 @Injectable()
 export class UsersService {
@@ -17,6 +18,7 @@ export class UsersService {
     private usersRepository: Repository<User>,
     private gcsService: GcsService,
     private appConfigService: AppConfigService,
+    private workspaceService: WorkspaceService,
   ) {}
 
   async createLocalUser(signUpDto: SignUpDto): Promise<User> {
@@ -36,7 +38,10 @@ export class UsersService {
       agreedPrivacy: signUpDto.agreedPrivacy
     });
 
-    return await this.usersRepository.save(newUser);
+    const savedUser = await this.usersRepository.save(newUser);
+    await this.workspaceService.createDefaultWorkspace(savedUser);
+
+    return savedUser;
   }
 
   async findUserByEmail(email: string): Promise<User | null> {
@@ -45,6 +50,10 @@ export class UsersService {
 
   async findUserBySocialId(providerId: string, provider: RegisterStatus): Promise<User | null> {
     return await this.usersRepository.findOne({ where: { providerId, provider } });
+  }
+
+  async findUserById(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id } });
   }
 
   async findOrCreateSocialUser(
@@ -81,6 +90,7 @@ export class UsersService {
         }
 
         const updatedUser = await this.usersRepository.save(existingUserByEmail);
+        await this.workspaceService.createDefaultWorkspace(updatedUser);
         return updatedUser;
       }
     }

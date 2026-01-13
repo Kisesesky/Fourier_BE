@@ -13,14 +13,18 @@ export class VerificationController {
   
   @ApiOperation({ summary: '회원가입 이메일 인증코드 발송' })
   @Post('sign-up/sendcode')
-  async sendCode(@Body() sendEmailCodeDto: SendEmailCodeDto) {
+  async sendCode(
+    @Body() sendEmailCodeDto: SendEmailCodeDto
+  ) {
     await this.verificationService.sendVerificationCode(sendEmailCodeDto.email);
     return { success: true, message: '인증 코드 전송 완료!, 유효 시간 5분'};
   }
 
   @ApiOperation({ summary: '회원가입 이메일 인증코드 검증' })
   @Post('sign-up/verifycode')
-  async verifyCode(@Body() verifyEmailCodeDto: VerifyEmailCodeDto) {
+  async verifyCode(
+    @Body() verifyEmailCodeDto: VerifyEmailCodeDto
+  ) {
     const result = await this.verificationService.verifyCode(verifyEmailCodeDto.email, verifyEmailCodeDto.code);
     if (!result) {
       throw new BadRequestException('인증 코드가 일치하지 않거나 만료된 코드입니다.');
@@ -30,17 +34,21 @@ export class VerificationController {
 
   @ApiOperation({ summary: '비밀번호 찾기 이메일 인증요청' })
   @Post('find-password/sendcode')
-  async verifyPasswordFindCode(@Body() verifyEmailCodeDto: VerifyEmailCodeDto) {
+  async verifyPasswordFindCode(
+    @Body() verifyEmailCodeDto: VerifyEmailCodeDto
+  ) {
     const message = await this.verificationService.sendPasswordFindEmail(verifyEmailCodeDto.email);
     return { success: true, message };
   }
 
   @ApiOperation({ summary: '비밀번호 찾기 이메일 인증코드 검증' })
   @Post('find-password/verifycode')
-  async verifyPasswordCode(@Body() dto: VerifyEmailCodeDto) {
+  async verifyPasswordCode
+  (@Body() verifyEmailCodeDto: VerifyEmailCodeDto
+) {
     const message = await this.verificationService.verifyPasswordFindCode(
-      dto.email,
-      dto.code,
+      verifyEmailCodeDto.email,
+      verifyEmailCodeDto.code,
     );
     return { success: true, message };
   }

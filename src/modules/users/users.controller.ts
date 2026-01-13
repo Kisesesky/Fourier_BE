@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, BadRequestException, UseInterceptors, UploadedFile, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { SignUpDto } from '../auth/dto/sign-up.dto';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
 import { User } from './entities/user.entity';
@@ -16,15 +16,30 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @ApiOperation({ summary: '유저 등록' })
+  @ApiOperation({ summary: '유저 등록 (관리자 직접등록)' })
   @Post('create')
-  create(@Body() signUpdto: SignUpDto) {
+  create(
+    @Body() signUpdto: SignUpDto
+  ) {
     return this.usersService.createLocalUser(signUpdto);
   }
   
   @ApiOperation({ summary: '프로필 변경' })
-  @Patch('update')
+  @ApiOkResponse({
+    schema: {
+      example: { success: true, message: '프로필이 업데이트되었습니다.' },
+    },
+  })
   @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        avatar: { type: 'string', format: 'binary', nullable: true },
+        displayName: { type: 'string', example: '김철수' },
+      },
+    },
+  })
   @UseInterceptors(FileInterceptor('avatar', {
     limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
@@ -34,6 +49,7 @@ export class UsersController {
       cb(null, true);
     },
   }))
+  @Patch('update')
   async updateUser(
     @RequestUser() user: User,
     @UploadedFile() file: Express.Multer.File,
@@ -52,9 +68,18 @@ export class UsersController {
     return { success: true, message: '프로필이 업데이트되었습니다.' };
   }
 
-  @ApiOperation({ summary: '검색' })
+  @ApiOperation({ summary: '유저 검색' })
+  @ApiQuery({
+    name: 'q',
+    required: true,
+    example: 'kim',
+    description: '검색 키워드 (2자 이상)',
+  })
   @Get('search')
-  searchUsers(@RequestUser() user: User, @Query('q') keyword: string) {
+  searchUsers(
+    @RequestUser() user: User,
+    @Query('q') keyword: string
+  ) {
     if (!keyword || keyword.length < 2) {
       throw new BadRequestException('검색어는 2자 이상이어야 합니다.');
     }
