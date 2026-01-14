@@ -1,10 +1,11 @@
 // src/modules/chat/entities/channel-message.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinTable, ManyToMany, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinTable, ManyToMany, OneToMany, OneToOne } from 'typeorm';
 import { Channel } from './channel.entity';
 import { User } from '../../users/entities/user.entity';
 import { MessageType } from '../constants/message-type.enum';
 import { MessageFile } from './message-file.entity';
 import { MessageReaction } from './message-reaction.entity';
+import { LinkPreview } from './link-preview.entity';
 
 @Entity()
 export class ChannelMessage {
@@ -29,10 +30,6 @@ export class ChannelMessage {
   @OneToMany(() => MessageFile, (messagefile) => messagefile.channelMessage)
   files: MessageFile[];
 
-  @ManyToMany(() => User)
-  @JoinTable()
-  readBy: User[];
-
   @Column({ type: 'timestamp', nullable: true })
   editedAt?: Date;
 
@@ -53,6 +50,12 @@ export class ChannelMessage {
 
   @OneToMany(() => MessageReaction, (reaction) => reaction.channelMessage)
   reactions: MessageReaction[];
+
+  @ManyToOne(() => ChannelMessage, { nullable: true, onDelete: 'SET NULL' })
+  replyTo?: ChannelMessage;
+
+  @OneToOne(() => LinkPreview, (preview) => preview.channelMessage, { cascade: true, nullable: true })
+  linkPreview?: LinkPreview;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -1,6 +1,7 @@
 // src/modules/chat/dto/message-response.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 import { MessageType } from '../constants/message-type.enum';
+import { LinkPreviewDto } from './link-preview.dto';
 
 export class MessageFileDto {
   @ApiProperty({ example: 'file-uuid' })
@@ -44,6 +45,23 @@ export class MessageThreadDto {
   lastReplyAt?: Date;
 }
 
+export class ReplyDto {
+  @ApiProperty({ example: '' })
+  id: string;
+
+  @ApiProperty({ example: '' })
+  content?: string;
+
+  @ApiProperty({ example: '' })
+  sender: {
+    id: string;
+    nickname: string;
+  };
+
+  @ApiProperty({ example: '' })
+  isDeleted: boolean;
+}
+
 export class MessageResponseDto {
   @ApiProperty({ example: 'message-uuid' })
   id: string;
@@ -75,9 +93,21 @@ export class MessageResponseDto {
   @ApiProperty({ example: false })
   isDeleted: boolean;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ example: '2025-01-01T12:00:00.000Z', required: false })
   editedAt?: Date;
+
+  @ApiProperty({ example: false })
+  isPinned?: boolean;
+
+  @ApiProperty({ example: false })
+  isSaved?: boolean;
+
+  @ApiProperty({ type: ReplyDto, required: false })
+  reply?: ReplyDto;
 
   @ApiProperty({ example: '2025-01-01T12:00:00.000Z' })
   createdAt: Date;
+
+  @ApiProperty({ type: LinkPreviewDto, required: false })
+  linkPreview?: LinkPreviewDto;
 }

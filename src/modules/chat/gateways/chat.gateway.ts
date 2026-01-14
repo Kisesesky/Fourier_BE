@@ -2,13 +2,10 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { WsSendDMDto } from '../dto/ws-send-dm.dto';
-import { WsReadMessageDto } from '../dto/ws-read-message.dto';
 import { WsReadDMDto } from '../dto/ws-read-dm.dto';
 import { WsTypingDto } from '../dto/ws-typing.dto';
 import { ChatService } from '../chat.service';
 import { SendChannelMessageDto } from '../dto/send-channel-message.dto';
-import { SendDmMessageDto } from '../dto/send-dm-message.dto';
-import { MessageType } from '../constants/message-type.enum';
 import { mapMessageToResponse } from '../utils/message.mapper';
 import { WsEditMessageDto } from '../dto/ws-edit-message.dto';
 import { WsDeleteMessageDto } from '../dto/ws-delete-message.dto';
@@ -16,6 +13,9 @@ import { ToggleReactionDto } from '../dto/toggle-reaction.dto';
 import { SendThreadMessageDto } from '../dto/send-thread-message.dto';
 import { ChannelMessage } from '../entities/channel-message.entity';
 import { DmMessage } from '../entities/dm-message.entity';
+import { ForbiddenException, forwardRef, Inject } from '@nestjs/common';
+import { ScopedMessage } from '../types/message-scope.type';
+import { OnEvent } from '@nestjs/event-emitter';
 
 @WebSocketGateway({ namespace: '/chat', cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -25,8 +25,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private threadViewers = new Map<string, Set<string>>();
 
   constructor(
+    @Inject(forwardRef(() => ChatService))
     private readonly chatService: ChatService
   ) {}
+
+  private resolveMessageRoom(
+    scoped: ScopedMessage<ChannelMessage | DmMessage>,
+  ): string {
+    return scoped.scope === 'CHANNEL'
+      ? `channel:${(scoped.message as ChannelMessage).channel.id}`
+      : (scoped.message as DmMessage).room.id;
+  }
 
   private emitMessageEvent(
     room: string,
@@ -44,13 +53,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       roomId: room,
       payload,
     });
-  }
-
-  private resolveMessageRoom(message: ChannelMessage | DmMessage): string {
-    if (message instanceof ChannelMessage) {
-      return `channel:${message.channel.id}`;
-    }
-    return message.room.id;
   }
 
   /** 클라이언트 연결 */
@@ -99,6 +101,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @OnEvent('linkPreview.created')
+  handleLinkPreviewCreated(payload: { scope: 'CHANNEL' | 'DM'; message: ChannelMessage | DmMessage; preview: any }) {
+    const room =
+      payload.scope === 'CHANNEL'
+        ? `channel:${(payload.message as ChannelMessage).channel.id}`
+        : (payload.message as DmMessage).room.id;
+
+    this.server.to(room).emit('message.updated', {
+      messageId: payload.message.id,
+      linkPreview: payload.preview,
+    });
+  }
+
   /** 채널 메시지 전송 */
   @SubscribeMessage('send-channel-message')
   async handleSendChannel(
@@ -107,30 +122,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const user = await this.chatService.getUserBySocket(client);
     const message = await this.chatService.sendChannelMessage(user, body);
-    const response = mapMessageToResponse(message, user.id);
-    const room = `channel:${body.channelId}`;
     this.emitMessageEvent(
-      room,
+      `channel:${body.channelId}`,
       'created',
-      response,
+      mapMessageToResponse(message, user.id),
     );
   }
 
   /** 채널 메시지 읽음 처리 */
-  @SubscribeMessage('read-channel-message')
-  async handleReadChannel(
+  @SubscribeMessage('channel.read')
+  async handleChannelRead(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: WsReadMessageDto,
+    @MessageBody() body: { channelId: string },
   ) {
     const user = await this.chatService.getUserBySocket(client);
-    const message = await this.chatService.markChannelMessageRead(body.messageId, user);
-    this.server
-      .to(`channel:${message.channel.id}`)
-      .emit('channel-message-read', {
-        messageId: message.id,
-        userId: user.id
-      },
-    );
+    await this.chatService.markChannelRead(body.channelId, user);
+    this.server.to(`channel:${body.channelId}`).emit('channel.read.updated', {
+      channelId: body.channelId,
+      userId: user.id,
+      readAt: new Date(),
+    });
   }
 
   /** DM 메시지 전송 */
@@ -143,20 +154,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const message = await this.chatService.sendDM(user, {
       roomId: body.roomId,
       content: body.content,
-      type: body.type ?? MessageType.TEXT,
     });
 
-    client.emit('dm-message-ack', {
+    client.emit('message.ack', {
       tempId: body.tempId,
       messageId: message.id,
       createdAt: message.createdAt
     });
-    const response = mapMessageToResponse(message, user.id);
 
     this.emitMessageEvent(
-      body.roomId,
+      message.room.id,
       'created',
-      response,
+      mapMessageToResponse(message, user.id),
     );
   }
 
@@ -167,14 +176,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() body: WsReadDMDto,
   ) {
     const user = await this.chatService.getUserBySocket(client);
-    const message = await this.chatService.markDMMessageRead(body.messageId, user);
-    this.server
-      .to(message.room.id)
-      .emit('dm-message-read', {
-        messageId: message.id,
-        userId: user.id
-      },
-    );
+    await this.chatService.markDmRead(body.roomId, user);
+    this.server.to(body.roomId).emit('dm.read.updated', {
+      roomId: body.roomId,
+      userId: user.id,
+      readAt: new Date(),
+    });
   }
 
   /** 타이핑 이벤트 */
@@ -195,13 +202,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const user = await this.chatService.getUserBySocket(client);
     const message = await this.chatService.editMessage(user, body.messageId, body.content);
-    const room = this.resolveMessageRoom(message);
-    const response = mapMessageToResponse(message, user.id);
+    const scoped = await this.chatService.findScopedMessageById(message.id);
 
     this.emitMessageEvent(
-      room,
+      this.resolveMessageRoom(scoped),
       'updated',
-      response,
+      mapMessageToResponse(message, user.id),
     );
   }
 
@@ -212,14 +218,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const user = await this.chatService.getUserBySocket(client);
     const message = await this.chatService.deleteMessage(user, body.messageId);
-    const room = this.resolveMessageRoom(message);
+    const scoped = await this.chatService.findScopedMessageById(message.id);
 
     this.emitMessageEvent(
-      room,
+      this.resolveMessageRoom(scoped),
       'deleted',
-      {
-        messageId: message.id,
-      },
+      { messageId: message.id },
     );
   }
 
@@ -230,11 +234,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const user = await this.chatService.getUserBySocket(client);
     const result = await this.chatService.toggleReaction(user, body.messageId, body.emoji);
-    const message = (await this.chatService.findMessageById(body.messageId));
-    const room = this.resolveMessageRoom(message);
+    const scoped = await this.chatService.findScopedMessageById(body.messageId);
+    
 
     this.emitMessageEvent(
-      room,
+      this.resolveMessageRoom(scoped),
       'reaction',
       {
         messageId: body.messageId,
@@ -251,33 +255,34 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() body: SendThreadMessageDto,
   ) {
     const user = await this.chatService.getUserBySocket(client);
-    const reply = await this.chatService.sendThreadMessage(user, body.parentMessageId, body.content, body.fileIds);
-    const room = this.resolveMessageRoom(reply);
+    const scoped = await this.chatService.findScopedMessageById(body.parentMessageId);
 
-    this.emitMessageEvent(
-      room,
-      'thread_created',
-      {
-        parentMessageId: body.parentMessageId,
-        message: mapMessageToResponse(reply, user.id),
-      },
-    );
+    if (scoped.scope !== 'CHANNEL') {
+      throw new ForbiddenException('DM에는 스레드를 사용할 수 없습니다.');
+    }
+
+    const parent = scoped.message as ChannelMessage;
+    const reply = await this.chatService.sendThreadMessage(user, body.parentMessageId, body.content, body.fileIds);
+    const room = `channel:${parent.channel.id}`;
+
+    this.emitMessageEvent(room, 'thread_created', {
+      parentMessageId: parent.id,
+      message: mapMessageToResponse(reply, user.id),
+    });
 
     const unreadCount = await this.chatService.getThreadUnreadCount(
-      body.parentMessageId,
+      parent.id,
       user.id,
     );
 
-    this.emitMessageEvent(
-      room,
-      'thread_meta',
-      {
-        parentMessageId: body.parentMessageId,
-        replyCount: reply.parentMessage.replyCount,
+    this.emitMessageEvent(room, 'thread_meta', {
+      parentMessageId: parent.id,
+      thread: {
+        replyCount: parent.replyCount,
         unreadCount,
-        lastReplyAt: reply.parentMessage?.lastReplyAt ?? new Date(),
+        lastReplyAt: parent.lastReplyAt,
       },
-    );
+    });
   }
 
   @SubscribeMessage('thread.open')
@@ -345,5 +350,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         isTyping: body.isTyping,
       });
     }
+  }
+
+  @SubscribeMessage('pin-message')
+  async handlePinMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { messageId: string },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    const pinned = await this.chatService.pinMessage(user, body.messageId);
+
+    this.server
+      .to(`channel:${pinned.channel.id}`)
+      .emit('message.pinned', {
+        messageId: pinned.message.id,
+        pinnedBy: user.id,
+        pinnedAt: pinned.pinnedAt,
+      });
+  }
+
+  @SubscribeMessage('unpin-message')
+  async handleUnpinMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { messageId: string },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    const pinned = await this.chatService.unpinMessage(user, body.messageId);
+
+    this.server
+      .to(`channel:${pinned.channel.id}`)
+      .emit('message.unpinned', {
+        messageId: body.messageId,
+      });
+  }
+
+  @SubscribeMessage('toggle-save-message')
+  async handleToggleSave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { messageId: string },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    const result = await this.chatService.toggleSaveMessage(user, body.messageId);
+
+    client.emit(
+      result.action === 'added'
+        ? 'message.saved'
+        : 'message.unsaved',
+      { messageId: body.messageId },
+    );
   }
 }

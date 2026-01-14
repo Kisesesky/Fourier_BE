@@ -1,15 +1,11 @@
 // src/modules/chat/dto/send-channel-message.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
-import { MessageType } from '../constants/message-type.enum';
+import { IsArray, IsOptional, IsUUID } from 'class-validator';
 
 export class SendChannelMessageDto {
   @ApiProperty({ example: 'channel-uuid' })
   @IsUUID()
   channelId: string;
-
-  @IsEnum(MessageType)
-  type: MessageType;
 
   @ApiProperty({ example: '안녕하세요 👋' })
   @IsOptional()
@@ -25,4 +21,9 @@ export class SendChannelMessageDto {
   @IsArray()
   @IsUUID('all', { each: true })
   fileIds?: string[];
+
+  @ApiProperty({ example: 'reply-message-uuid' })
+  @IsOptional()
+  @IsUUID()
+  replyToMessageId?: string;
 }

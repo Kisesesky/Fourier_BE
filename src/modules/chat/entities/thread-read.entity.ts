@@ -14,9 +14,6 @@ export class ThreadRead {
   @ManyToOne(() => ChannelMessage, { onDelete: 'CASCADE' })
   parentMessage: ChannelMessage;
 
-  @ManyToOne(() => ChannelMessage, { nullable: true })
-  lastReadMessage?: ChannelMessage;
-
   @Column({ type: 'timestamp' })
   lastReadAt: Date;
 

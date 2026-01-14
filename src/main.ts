@@ -1,5 +1,7 @@
 import * as crypto from 'crypto'
 (globalThis as any).crypto = crypto;
+import { File } from 'undici';
+(global as any).File = File;
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';

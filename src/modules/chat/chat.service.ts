@@ -1,7 +1,7 @@
 // src/modules/chat/chat.service.ts
 import { Injectable, NotFoundException, ForbiddenException, UnauthorizedException, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Channel } from './entities/channel.entity';
 import { ChannelMessage } from './entities/channel-message.entity';
 import { DmRoom } from './entities/dm-room.entity';
@@ -20,6 +20,18 @@ import { MessageResponseDto } from './dto/message-response.dto';
 import { mapMessageToResponse } from './utils/message.mapper';
 import { MessageReaction } from './entities/message-reaction.entity';
 import { ThreadRead } from './entities/thread-read.entity';
+import { ChannelRead } from './entities/channel-read.entity';
+import { DmRead } from './entities/dm-read.entity';
+import { ScopedMessage } from './types/message-scope.type';
+import { MessageSearch } from './entities/message-search.entity';
+import { SearchMessageDto } from './dto/search-message.dto';
+import { GetMessageContextDto } from './dto/get-message-context.dto';
+import { ChannelPinnedMessage } from './entities/channel-pinned-message.entity';
+import { SavedMessage } from './entities/saved-message.entity';
+import { extractFirstUrl } from './utils/extract-url-util';
+import { LinkPreview } from './entities/link-preview.entity';
+import { LinkPreviewService } from './services/link-preview.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class ChatService {
@@ -30,13 +42,18 @@ export class ChatService {
     private readonly channelRepository: Repository<Channel>,
     @InjectRepository(ChannelMessage)
     private readonly channelMessageRepository: Repository<ChannelMessage>,
+    @InjectRepository(ChannelRead)
+    private readonly channelReadRepository: Repository<ChannelRead>,
+    @InjectRepository(ChannelPinnedMessage)
+    private readonly channelPinnedRepository: Repository<ChannelPinnedMessage>,
     @InjectRepository(DmRoom)
     private readonly dmRoomRepository: Repository<DmRoom>,
     @InjectRepository(DmMessage)
     private readonly dmMessageRepository: Repository<DmMessage>,
+    @InjectRepository(DmRead)
+    private readonly dmReadRepository: Repository<DmRead>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
-    private readonly appConfigService: AppConfigService,
     @InjectRepository(MessageFile)
     private readonly messageFileRepository: Repository<MessageFile>,
     private readonly filesService: FilesService,
@@ -44,7 +61,180 @@ export class ChatService {
     private readonly messageReactionRepository: Repository<MessageReaction>,
     @InjectRepository(ThreadRead)
     private readonly threadReadRepository: Repository<ThreadRead>,
+    @InjectRepository(MessageSearch)
+    private readonly messageSearchRepository: Repository<MessageSearch>,
+    @InjectRepository(SavedMessage)
+    private readonly savedMessageRepository: Repository<SavedMessage>,
+    @InjectRepository(LinkPreview)
+    private readonly linkPreviewRepository: Repository<LinkPreview>,
+    private readonly linkPreviewService: LinkPreviewService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly appConfigService: AppConfigService,
   ) {}
+
+  private async indexChannelMessage(message: ChannelMessage) {
+    if (!message.content) return;
+
+    await this.messageSearchRepository.save({
+      messageId: message.id,
+      scope: 'CHANNEL',
+      scopeId: message.channel.id,
+      content: message.content,
+      sender: message.sender,
+    });
+  }
+
+  private async indexDmMessage(message: DmMessage) {
+    if (!message.content) return;
+
+    await this.messageSearchRepository.save({
+      messageId: message.id,
+      scope: 'DM',
+      scopeId: message.room.id,
+      content: message.content,
+      sender: message.sender,
+    });
+  }
+
+  private async updateSearchIndex(messageId: string, content: string) {
+    await this.messageSearchRepository.update(
+      { messageId },
+      { content },
+    );
+  }
+
+  private async getChannelMessageContext(
+    channelMessage: ChannelMessage,
+    user: User,
+    limit = 20,
+  ) {
+    const half = Math.floor(limit / 2);
+
+    const before = await this.channelMessageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.files', 'messagefile')
+      .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .where('message.channelId = :channelId', {
+        channelId: channelMessage.channel.id,
+      })
+      .andWhere('message.createdAt < :createdAt', {
+        createdAt: channelMessage.createdAt,
+      })
+      .orderBy('message.createdAt', 'DESC')
+      .take(half)
+      .getMany();
+
+    const after = await this.channelMessageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.files', 'messagefile')
+      .leftJoinAndSelect('messagefile.file', 'file')
+      .where('message.channelId = :channelId', {
+        channelId: channelMessage.channel.id,
+      })
+      .andWhere('message.createdAt > :createdAt', {
+        createdAt: channelMessage.createdAt,
+      })
+      .orderBy('message.createdAt', 'ASC')
+      .take(half)
+      .getMany();
+
+    return {
+      anchor: mapMessageToResponse(channelMessage, user.id),
+      before: before.reverse().map(message => mapMessageToResponse(message, user.id)),
+      after: after.map(message => mapMessageToResponse(message, user.id)),
+    };
+  }
+
+  private async getDmMessageContext(
+    dmMessage: DmMessage,
+    user: User,
+    limit = 20,
+  ) {
+    const half = Math.floor(limit / 2);
+
+    const before = await this.dmMessageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.files', 'messagefile')
+      .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .where('message.roomId = :roomId', { roomId: dmMessage.room.id })
+      .andWhere('message.createdAt < :createdAt', { createdAt: dmMessage.createdAt })
+      .orderBy('message.createdAt', 'DESC')
+      .take(half)
+      .getMany();
+
+    const after = await this.dmMessageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.files', 'messagefile')
+      .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .where('message.roomId = :roomId', { roomId: dmMessage.room.id })
+      .andWhere('message.createdAt > :createdAt', { createdAt: dmMessage.createdAt })
+      .orderBy('message.createdAt', 'ASC')
+      .take(half)
+      .getMany();
+
+    return {
+      anchor: mapMessageToResponse(dmMessage, user.id),
+      before: before.reverse().map(message => mapMessageToResponse(message, user.id)),
+      after: after.map(message => mapMessageToResponse(message, user.id)),
+    };
+  }
+
+  private async createLinkPreviewAsync({
+    scope,
+    message,
+    url,
+  }: {
+    scope: 'CHANNEL' | 'DM';
+    message: ChannelMessage | DmMessage;
+    url: string;
+  }) {
+    setImmediate(async () => {
+      const preview = await this.linkPreviewService.fetch(url);
+      if (!preview) return;
+
+      await this.linkPreviewRepository.save({
+        ...preview,
+        ...(scope === 'CHANNEL'
+          ? { channelMessage: message }
+          : { dmMessage: message }),
+      });
+
+      this.eventEmitter.emit('linkPreview.created', {
+        scope,
+        message,
+        preview,
+      });
+    });
+  }
+
+  async getMessageContext(
+    user: User,
+    getMessageContextDto: GetMessageContextDto,
+  ) {
+    const scoped = await this.findScopedMessageById(getMessageContextDto.messageId);
+    const limit = getMessageContextDto.limit ?? 20;
+
+    if (scoped.scope === 'CHANNEL') {
+      return this.getChannelMessageContext(
+        scoped.message as ChannelMessage,
+        user,
+        limit,
+      );
+    }
+
+    return this.getDmMessageContext(
+      scoped.message as DmMessage,
+      user,
+      limit,
+    );
+  }
 
   /** JWT 토큰 검증 후 User 반환 */
   async verifyToken(token: string): Promise<User> {
@@ -96,22 +286,27 @@ export class ChatService {
     return channels.map(channel => channel.id);
   }
 
-  async findMessageById(
+  async findScopedMessageById(
     messageId: string,
-  ): Promise<ChannelMessage | DmMessage> {
+  ): Promise<ScopedMessage<ChannelMessage | DmMessage>> {
+
     const channelMessage = await this.channelMessageRepository.findOne({
       where: { id: messageId },
       relations: ['channel'],
     });
 
-    if (channelMessage) return channelMessage;
+    if (channelMessage) {
+      return { scope: 'CHANNEL', message: channelMessage };
+    }
 
     const dmMessage = await this.dmMessageRepository.findOne({
       where: { id: messageId },
       relations: ['room'],
     });
 
-    if (dmMessage) return dmMessage;
+    if (dmMessage) {
+      return { scope: 'DM', message: dmMessage };
+    }
 
     throw new NotFoundException('메시지를 찾을 수 없습니다.');
   }
@@ -124,6 +319,14 @@ export class ChatService {
     const channel = await this.channelRepository.findOne({ where: { id: sendChannelMessageDto.channelId } });
     if (!channel) {
       throw new NotFoundException('채널 없음');
+    }
+
+    let replyTo: ChannelMessage | undefined;
+
+    if (sendChannelMessageDto.replyToMessageId) {
+      replyTo = await this.channelMessageRepository.findOne({
+        where: { id: sendChannelMessageDto.replyToMessageId },
+      });
     }
 
     let parentMessage: ChannelMessage | undefined;
@@ -160,6 +363,7 @@ export class ChatService {
       type,
       content: hasFiles ? null : sendChannelMessageDto.content,
       preview: makePreview(sendChannelMessageDto.content),
+      replyTo,
       parentMessage,
     });
 
@@ -173,12 +377,17 @@ export class ChatService {
       );
     }
 
-    // 3. 답장수 증가
-    if (parentMessage) {
-      parentMessage.replyCount += 1;
-      await this.channelMessageRepository.save(parentMessage);
+    const url = extractFirstUrl(sendChannelMessageDto.content);
+
+    if (url) {
+      this.createLinkPreviewAsync({
+        scope: 'CHANNEL',
+        message,
+        url,
+      });
     }
 
+    await this.indexChannelMessage(message);
     return message;
   }
 
@@ -194,6 +403,7 @@ export class ChatService {
       .leftJoinAndSelect('message.sender', 'sender')
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.linkPreview', 'linkPreview')
       .where('message.channelId = :channelId', { channelId })
       .orderBy('message.createdAt', 'DESC')
       .take(limit);
@@ -202,24 +412,21 @@ export class ChatService {
       qb.andWhere('message.createdAt < :cursor', { cursor });
     }
     const messages = await qb.getMany();
-    return messages.map(message => mapMessageToResponse(message, user.id));
-  }
 
-  /** 채널 메시지 읽음 처리 */
-  async markChannelMessageRead(messageId: string, user: User) {
-    const message = await this.channelMessageRepository.findOne({
-      where: { id: messageId },
-      relations: ['readBy', 'channel'],
-    });
-    if (!message) {
-      throw new NotFoundException('메시지 없음');
-    }
+    const parentIds = messages
+      .filter(m => !m.parentMessage && m.replyCount > 0)
+      .map(m => m.id);
 
-    if (!message.readBy.some(users => users.id === user.id)) {
-      message.readBy.push(user);
-      await this.channelMessageRepository.save(message);
-    }
-    return message;
+    const unreadMap = await this.getThreadUnreadCountMap(
+      parentIds,
+      user.id,
+    );
+
+    return messages.map(message =>
+      mapMessageToResponse(message, user.id, {
+        threadUnreadCount: unreadMap[message.id] ?? 0,
+      }),
+    );
   }
 
   /** DM 룸 조회/생성 */
@@ -254,6 +461,14 @@ export class ChatService {
       throw new ForbiddenException('참여자가 아님');
     }
 
+    let replyTo: DmMessage | undefined;
+
+    if (sendDmMessageDto.replyToMessageId) {
+      replyTo = await this.dmMessageRepository.findOne({
+        where: { id: sendDmMessageDto.replyToMessageId },
+      });
+    }
+
     let fileIds = sendDmMessageDto.fileIds ?? [];
     const hasContent = !!sendDmMessageDto.content?.trim();
 
@@ -279,6 +494,7 @@ export class ChatService {
       type,
       content: hasFiles ? null : sendDmMessageDto.content,
       preview: makePreview(sendDmMessageDto.content),
+      replyTo,
     });
 
     // 2. 메시지 ↔ 파일 연결
@@ -291,6 +507,17 @@ export class ChatService {
       );
     }
 
+    const url = extractFirstUrl(sendDmMessageDto.content);
+
+    if (url) {
+      this.createLinkPreviewAsync({
+        scope: 'DM',
+        message,
+        url,
+      });
+    }
+
+    await this.indexDmMessage(message);
     return message;
   }
 
@@ -314,6 +541,7 @@ export class ChatService {
       .leftJoinAndSelect('message.sender', 'sender')
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.linkPreview', 'linkPreview')
       .where('message.roomId = :roomId', { roomId })
       .orderBy('message.createdAt', 'DESC')
       .take(limit);
@@ -327,21 +555,27 @@ export class ChatService {
   }
 
   /** DM 메시지 읽음 처리 */
-  async markDMMessageRead(messageId: string, user: User) {
-    const message = await this.dmMessageRepository.findOne({
-      where: { id: messageId },
-      relations: ['readBy', 'room'],
+  async markDmRead(
+    roomId: string,
+    user: User
+  ) {
+    const existing = await this.dmReadRepository.findOne({
+      where: {
+        user: { id: user.id },
+        room: { id: roomId},
+      },
     });
-    if (!message) {
-      throw new NotFoundException('메시지 없음');
+
+    if (existing) {
+      existing.lastReadAt = new Date();
+      return this.dmReadRepository.save(existing);
     }
 
-    if (!message.readBy.some(users => users.id === user.id)) {
-      message.readBy.push(user);
-      await this.dmMessageRepository.save(message);
-    }
-
-    return message;
+    return this.dmReadRepository.save({
+      user,
+      room: { id: roomId },
+      lastReadAt: new Date(),
+    });
   }
 
   /** 메세지 수정 */
@@ -350,13 +584,9 @@ export class ChatService {
     messageId: string,
     content: string,
   ) {
-    const message =
-      (await this.channelMessageRepository.findOne({ where: { id: messageId }, relations: ['sender'] })) ??
-      (await this.dmMessageRepository.findOne({ where: { id: messageId }, relations: ['sender'] }));
+    const scoped = await this.findScopedMessageById(messageId);
+    const message = scoped.message;
 
-    if (!message) {
-      throw new NotFoundException('해당 메시지가 존재하지 않습니다.');
-    }
     if (message.sender.id !== user.id) {
       throw new ForbiddenException('본인이 작성한 메시지만 수정이 가능합니다.');
     }
@@ -365,20 +595,21 @@ export class ChatService {
     message.editedAt = new Date();
     message.preview = makePreview(content);
 
-    return message instanceof ChannelMessage
-      ? this.channelMessageRepository.save(message)
-      : this.dmMessageRepository.save(message);
+    await this.updateSearchIndex(message.id, content);
+
+    return scoped.scope === 'CHANNEL'
+      ? this.channelMessageRepository.save(message as ChannelMessage)
+      : this.dmMessageRepository.save(message as DmMessage);
   }
 
   /** 메세지 삭제 */
-  async deleteMessage(user: User, messageId: string) {
-    const message =
-      (await this.channelMessageRepository.findOne({ where: { id: messageId }, relations: ['sender'] })) ??
-      (await this.dmMessageRepository.findOne({ where: { id: messageId }, relations: ['sender'] }));
+  async deleteMessage(
+    user: User,
+    messageId: string
+  ) {
+    const scoped = await this.findScopedMessageById(messageId);
+    const message = scoped.message;
 
-    if (!message) {
-      throw new NotFoundException('해당 메시지가 존재하지 않습니다.');
-    }
     if (message.sender.id !== user.id) {
       throw new ForbiddenException('본인이 작성한 메시지만 삭제가 가능합니다.');
     }
@@ -387,9 +618,13 @@ export class ChatService {
     message.content = null;
     message.files = [];
 
-    return message instanceof ChannelMessage
-      ? this.channelMessageRepository.save(message)
-      : this.dmMessageRepository.save(message);
+    await this.messageSearchRepository.delete({
+      messageId: message.id,
+    });
+
+    return scoped.scope === 'CHANNEL'
+      ? this.channelMessageRepository.save(message as ChannelMessage)
+      : this.dmMessageRepository.save(message as DmMessage);
   }
 
   async getThreadMessages(
@@ -410,21 +645,17 @@ export class ChatService {
     messageId: string,
     emoji: string,
   ) {
-    const message =
-      (await this.channelMessageRepository.findOne({ where: { id: messageId } })) ??
-      (await this.dmMessageRepository.findOne({ where: { id: messageId } }));
-    
-    if (!message) {
-      throw new NotFoundException('메시지가 없습니다.');
-    }
+    const scoped = await this.findScopedMessageById(messageId);
+    const where =
+      scoped.scope === 'CHANNEL'
+        ? { channelMessage: { id: scoped.message.id } }
+        : { dmMessage: { id: scoped.message.id } };
 
     const existing = await this.messageReactionRepository.findOne({
       where: {
         user: { id: user.id },
         emoji,
-        ...(message instanceof ChannelMessage)
-          ? { channelMessage: { id: message.id } }
-          : { dmMessage: { id: message.id } },
+        ...where,
       },
     });
 
@@ -436,9 +667,9 @@ export class ChatService {
     await this.messageReactionRepository.save({
       user,
       emoji,
-      ...(message instanceof ChannelMessage)
-          ? { channelMessage: message }
-          : { dmMessage: message },
+      ...(scoped.scope === 'CHANNEL')
+          ? { channelMessage: scoped.message }
+          : { dmMessage: scoped.message },
     });
 
     return { action: 'added' };
@@ -450,47 +681,32 @@ export class ChatService {
     content?: string,
     fileIds: string[] = [],
   ) {
-    const parent =
-      (await this.channelMessageRepository.findOne({ where: { id: parentMessageId } })) ??
-      (await this.dmMessageRepository.findOne({ where: { id: parentMessageId } }));
+    const parent = await this.channelMessageRepository.findOne({
+      where: { id: parentMessageId },
+      relations: ['channel'],
+    });
     
     if (!parent) {
-      throw new NotFoundException('스레드 메시지가 없습니다.');
+      throw new NotFoundException('DM 메시지에는 스레드를 생성할 수 없습니다.');
     }
-
-    let reply: ChannelMessage | DmMessage;
-    
-    if (parent instanceof ChannelMessage) {
-      reply = await this.channelMessageRepository.save({
+  
+    const reply = await this.channelMessageRepository.save({
+        channel: parent.channel,
         sender: user,
         parentMessage: parent,
         type: fileIds.length ? MessageType.FILE : MessageType.TEXT,
         content,
       });
 
-      parent.replyCount += 1;
-      parent.lastReplyAt = new Date();
-      await this.channelMessageRepository.save(parent);
-    } else {
-      reply = await this.dmMessageRepository.save({
-        sender: user,
-        parentMessage: parent,
-        type: fileIds.length ? MessageType.FILE : MessageType.TEXT,
-        content,
-      });
-
-      parent.replyCount += 1;
-      parent.lastReplyAt = new Date();
-      await this.dmMessageRepository.save(parent);
-    }
+    parent.replyCount += 1;
+    parent.lastReplyAt = new Date();
+    await this.channelMessageRepository.save(parent);
 
     if (fileIds.length) {
       await this.messageFileRepository.save(
         fileIds.map((fileId) => ({
           file: { id: fileId },
-          ...(parent instanceof ChannelMessage
-            ? { channelMessage: reply }
-            : { dmMessage: reply }),
+          channelMessage: reply,
         })),
       );
     }
@@ -544,5 +760,268 @@ export class ChatService {
     }
 
     return qb.getCount();
+  }
+
+  async markChannelRead(
+    channelId: string,
+    user: User,
+  ) {
+    const existing = await this.channelReadRepository.findOne({
+      where: {
+        user: { id: user.id },
+        channel: { id: channelId },
+      },
+    });
+
+    if (existing) {
+      existing.lastReadAt = new Date();
+      return this.channelReadRepository.save(existing);
+    }
+
+    return this.channelReadRepository.save({
+      user,
+      channel: { id: channelId },
+      lastReadAt: new Date(),
+    });
+  }
+
+  async getChannelUnreadCount(
+    channelId: string,
+    userId: string,
+  ) {
+    const read = await this.channelReadRepository.findOne({
+      where: {
+        user: { id: userId },
+        channel: { id: channelId },
+      },
+    });
+
+    const qb = this.channelMessageRepository
+      .createQueryBuilder('message')
+      .where('message.channelId = :channelId', { channelId });
+
+    if (read) {
+      qb.andWhere('message.createdAt > :lastReadAt', {
+        lastReadAt: read.lastReadAt,
+      });
+    }
+
+    return qb.getCount();
+  }
+
+  async getDmUnreadCount(
+    roomId: string,
+    userId: string,
+  ) {
+    const read = await this.dmReadRepository.findOne({
+      where: {
+        user: { id: userId },
+        room: { id: roomId },
+      },
+    });
+
+    const qb = this.dmMessageRepository
+      .createQueryBuilder('message')
+      .where('message.roomId = :roomId', { roomId });
+
+    if (read) {
+      qb.andWhere('message.createdAt > :lastReadAt', {
+        lastReadAt: read.lastReadAt,
+      });
+    }
+
+    return qb.getCount();
+  }
+
+  async getThreadUnreadCountMap(
+    parentMessageIds: string[],
+    userId: string,
+  ): Promise<Record<string, number>> {
+
+    if (parentMessageIds.length === 0) return {};
+
+    const reads = await this.threadReadRepository.find({
+      where: {
+        user: { id: userId },
+        parentMessage: { id: In(parentMessageIds) },
+      },
+    });
+
+    const readMap = new Map(
+      reads.map(r => [r.parentMessage.id, r.lastReadAt]),
+    );
+
+    const qb = this.channelMessageRepository
+      .createQueryBuilder('reply')
+      .select('reply.parentMessageId', 'parentId')
+      .addSelect('COUNT(reply.id)', 'count')
+      .where('reply.parentMessageId IN (:...ids)', {
+        ids: parentMessageIds,
+      })
+      .groupBy('reply.parentMessageId');
+
+    const rows = await qb.getRawMany();
+
+    const result: Record<string, number> = {};
+
+    for (const row of rows) {
+      const parentId = row.parentId;
+      const lastReadAt = readMap.get(parentId);
+
+      if (!lastReadAt) {
+        result[parentId] = Number(row.count);
+        continue;
+      }
+
+      const count = await this.channelMessageRepository
+        .createQueryBuilder('reply')
+        .where('reply.parentMessageId = :parentId', { parentId })
+        .andWhere('reply.createdAt > :lastReadAt', { lastReadAt })
+        .getCount();
+
+      result[parentId] = count;
+    }
+
+    return result;
+  }
+
+  async searchMessages(
+    user: User,
+    searchMessageDto: SearchMessageDto,
+  ) {
+    const channelIds = await this.getUserChannelIds(user.id);
+    const dmRoomIds = await this.getUserDmRoomIds(user.id);
+
+    const qb = this.messageSearchRepository
+      .createQueryBuilder('search')
+      .leftJoinAndSelect('search.sender', 'sender')
+      .where('search.content ILIKE :query', {
+        query: `%${searchMessageDto.query}%`,
+      })
+      .andWhere(
+        `(search.scope = 'CHANNEL' AND search.scopeId IN (:...channelIds))
+        OR
+        (search.scope = 'DM' AND search.scopeId IN (:...dmRoomIds))`,
+        {
+          channelIds: channelIds.length ? channelIds : ['__none__'],
+          dmRoomIds: dmRoomIds.length ? dmRoomIds : ['__none__'],
+        },
+      )
+      .orderBy('search.createdAt', 'DESC')
+      .take(searchMessageDto.limit ?? 20);
+
+    if (searchMessageDto.scope) {
+      qb.andWhere('search.scope = :scope', { scope: searchMessageDto.scope });
+    }
+
+    if (searchMessageDto.scopeId) {
+      qb.andWhere('search.scopeId = :scopeId', { scopeId: searchMessageDto.scopeId });
+    }
+
+    return qb.getMany();
+  }
+
+  async pinMessage(
+    user: User,
+    messageId: string,
+  ) {
+    const message = await this.channelMessageRepository.findOne({
+      where: { id: messageId },
+      relations: ['channel'],
+    });
+
+    if (!message) {
+      throw new NotFoundException('메시지 없음');
+    }
+
+    const exists = await this.channelPinnedRepository.findOne({
+      where: {
+        channel: { id: message.channel.id },
+        message: { id: message.id },
+      },
+    });
+
+    if (exists) return exists;
+
+    return this.channelPinnedRepository.save({
+      channel: message.channel,
+      message,
+      pinnedBy: user,
+    });
+  }
+
+  async unpinMessage(
+    user: User,
+    messageId: string,
+  ) {
+    const pinned = await this.channelPinnedRepository.findOne({
+      where: {
+        message: { id: messageId },
+      },
+      relations: ['channel'],
+    });
+
+    if (!pinned) {
+      throw new NotFoundException('고정되지 않은 메시지');
+    }
+
+    await this.channelPinnedRepository.remove(pinned);
+    return pinned;
+  }
+
+  async getPinnedMessages(channelId: string) {
+    return this.channelPinnedRepository.find({
+      where: {
+        channel: { id: channelId },
+      },
+      relations: ['message', 'message.sender'],
+      order: { pinnedAt: 'DESC' },
+    });
+  }
+
+  async toggleSaveMessage(
+    user: User,
+    messageId: string,
+  ) {
+    const scoped = await this.findScopedMessageById(messageId);
+
+    const where =
+      scoped.scope === 'CHANNEL'
+        ? { channelMessage: { id: scoped.message.id } }
+        : { dmMessage: { id: scoped.message.id } };
+
+    const existing = await this.savedMessageRepository.findOne({
+      where: {
+        user: { id: user.id },
+        ...where,
+      },
+    });
+
+    if (existing) {
+      await this.savedMessageRepository.remove(existing);
+      return { action: 'removed' };
+    }
+
+    await this.savedMessageRepository.save({
+      user,
+      ...(scoped.scope === 'CHANNEL'
+        ? { channelMessage: scoped.message }
+        : { dmMessage: scoped.message }),
+    });
+
+    return { action: 'added' };
+  }
+
+  async getSavedMessages(user: User) {
+    return this.savedMessageRepository.find({
+      where: { user: { id: user.id } },
+      relations: [
+        'channelMessage',
+        'channelMessage.sender',
+        'dmMessage',
+        'dmMessage.sender',
+      ],
+      order: { savedAt: 'DESC' },
+    });
   }
 }

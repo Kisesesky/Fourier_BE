@@ -5,5 +5,5 @@ import { IsUUID } from 'class-validator';
 export class WsReadDMDto {
   @ApiProperty({ example: 'message-uuid', required: false })
   @IsUUID()
-  messageId: string;
+  roomId: string;
 }

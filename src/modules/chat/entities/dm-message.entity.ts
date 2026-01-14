@@ -1,10 +1,11 @@
 // src/modules/chat/entities/dm-message.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinTable, ManyToMany, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinTable, ManyToMany, OneToMany, OneToOne } from 'typeorm';
 import { DmRoom } from './dm-room.entity';
 import { User } from '../../users/entities/user.entity';
 import { MessageType } from '../constants/message-type.enum';
 import { MessageFile } from './message-file.entity';
 import { MessageReaction } from './message-reaction.entity';
+import { LinkPreview } from './link-preview.entity';
 
 @Entity()
 export class DmMessage {
@@ -23,10 +24,6 @@ export class DmMessage {
   @OneToMany(() => MessageFile, (messagefile) => messagefile.dmMessage)
   files: MessageFile[];
   
-  @ManyToMany(() => User)
-  @JoinTable()
-  readBy: User[];
-
   @ManyToOne(() => DmRoom, (room) => room.messages, { onDelete: 'CASCADE' })
   room: DmRoom;
 
@@ -53,6 +50,12 @@ export class DmMessage {
 
   @OneToMany(() => MessageReaction, (reaction) => reaction.dmMessage)
   reactions: MessageReaction[];
+
+  @ManyToOne(() => DmMessage, { nullable: true,  onDelete: 'SET NULL' })
+  replyTo?: DmMessage;
+
+  @OneToOne(() => LinkPreview, (preview) => preview.dmMessage, { cascade: true, nullable: true })
+  linkPreview?: LinkPreview;
 
   @CreateDateColumn()
   createdAt: Date;

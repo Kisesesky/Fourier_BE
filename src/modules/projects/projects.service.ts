@@ -9,6 +9,8 @@ import { User } from '../users/entities/user.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectRole } from './constants/project-role.enum';
+import { Channel } from '../chat/entities/channel.entity';
+import { ChannelMember } from '../chat/entities/channel-member.entity';
 
 @Injectable()
 export class ProjectsService {
@@ -19,6 +21,10 @@ export class ProjectsService {
     private readonly projectMemberRepository: Repository<ProjectMember>,
     @InjectRepository(TeamMember)
     private readonly teamMemberRepository: Repository<TeamMember>,
+    @InjectRepository(Channel)
+    private readonly channelRepository: Repository<Channel>,
+    @InjectRepository(ChannelMember)
+    private readonly channelMemberRepository: Repository<ChannelMember>,
   ) {}
 
   /** 프로젝트 생성 */
@@ -28,12 +34,15 @@ export class ProjectsService {
     user: User,
   ) {
     const { selectedUserIds = [] } = createProjectDto;
+
     // 1. 팀 멤버 확인
     const creatorTeamMember = await this.teamMemberRepository.findOne({
       where: { team: { id: teamId }, user: { id: user.id } },
       relations: ['team'],
     });
-    if (!creatorTeamMember) throw new ForbiddenException('팀 멤버 아님');
+    if (!creatorTeamMember) {
+      throw new ForbiddenException('팀 멤버 아님');
+    }
 
     // 2. 프로젝트 생성
     const project = this.projectRepository.create({
@@ -45,31 +54,69 @@ export class ProjectsService {
     // 3. 생성자는 자동 OWNER
     await this.projectMemberRepository.save(
       this.projectMemberRepository.create({
-        project: { id: project.id } as Project,
-        user: { id: user.id } as User,
+        project,
+        user,
         role: ProjectRole.OWNER,
       }),
     );
 
     // 4. 선택된 유저들 자동 추가 (팀 멤버만)
-    if (selectedUserIds.length > 0) {
-      const teamMembers = await this.teamMemberRepository.find({
-        where: { team: { id: teamId }, user: { id: In(selectedUserIds) } },
-      });
+    const teamMembers =
+      selectedUserIds.length > 0
+        ? await this.teamMemberRepository.find({
+            where: { team: { id: teamId }, user: { id: In(selectedUserIds) } },
+          })
+        : [];
+    
+    const ownerMember = await this.projectMemberRepository.save(
+      this.projectMemberRepository.create({
+        project,
+        user,
+        role: ProjectRole.OWNER,
+      }),
+    );
 
-      for (const member of teamMembers) {
-        const exists = await this.projectMemberRepository.findOne({
-          where: { project: { id: project.id }, user: { id: member.user.id } },
-        });
-        if (!exists) {
-          await this.projectMemberRepository.save(
-            this.projectMemberRepository.create({
-              project,
-              user: member.user,
-              role: ProjectRole.MEMBER,
-            }),
-          );
-        }
+    const projectMembers = [ownerMember, ...teamMembers.map(tm => ({
+      project,
+      user: tm.user,
+      role: ProjectRole.MEMBER,
+    }))];
+
+    for (const member of projectMembers) {
+      const exists = await this.projectMemberRepository.findOne({
+        where: { project: { id: project.id }, user: { id: member.user.id } },
+      });
+      if (!exists) {
+        await this.projectMemberRepository.save(member);
+      }
+    }
+
+    // 5. 프로젝트 기본 채널 가져오기 / 생성
+    let defaultChannel = await this.channelRepository.findOne({
+      where: { project: { id: project.id }, isDefault: true },
+    });
+    if (!defaultChannel) {
+      defaultChannel = await this.channelRepository.save(
+        this.channelRepository.create({
+          name: 'general',
+          project,
+          isDefault: true,
+        }),
+      );
+    }
+
+    // 6. 채널에 프로젝트 멤버 자동 참여
+    for (const member of projectMembers) {
+      const exists = await this.channelMemberRepository.findOne({
+        where: { channel: { id: defaultChannel.id }, user: { id: member.user.id } },
+      });
+      if (!exists) {
+        await this.channelMemberRepository.save(
+          this.channelMemberRepository.create({
+            channel: defaultChannel,
+            user: member.user,
+          }),
+        );
       }
     }
 
@@ -80,28 +127,52 @@ export class ProjectsService {
   async addProjectMember(projectId: string, userId: string, role: ProjectRole) {
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
-      relations: ['team'],
+      relations: ['team', 'channels'],
     });
-    if (!project) throw new NotFoundException('프로젝트 없음');
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
 
     // 팀 멤버만 추가 가능
     const teamMember = await this.teamMemberRepository.findOne({
       where: { team: { id: project.team.id }, user: { id: userId } },
     });
-    if (!teamMember) throw new ForbiddenException('팀 멤버만 추가 가능');
+    if (!teamMember) {
+      throw new ForbiddenException('팀 멤버만 추가 가능');
+    }
 
     const exists = await this.projectMemberRepository.findOne({
       where: { project: { id: projectId }, user: { id: userId } },
     });
-    if (exists) throw new ConflictException('이미 프로젝트 멤버');
+    if (exists) {
+      throw new ConflictException('이미 프로젝트 멤버');
+    }
 
-    return this.projectMemberRepository.save(
+    const newMember = await this.projectMemberRepository.save(
       this.projectMemberRepository.create({
         project: { id: projectId } as Project,
         user: { id: userId } as User,
         role
       }),
     );
+
+    // 프로젝트 기본 채널에 자동 참여
+    const defaultChannel = project.channels.find(c => c.isDefault);
+    if (defaultChannel) {
+      const channelExists = await this.channelMemberRepository.findOne({
+        where: { channel: { id: defaultChannel.id }, user: { id: userId } },
+      });
+      if (!channelExists) {
+        await this.channelMemberRepository.save(
+          this.channelMemberRepository.create({
+            channel: defaultChannel,
+            user: { id: userId } as User,
+          }),
+        );
+      }
+    }
+
+    return newMember;
   }
 
   /** 프로젝트 멤버 목록 조회 */
@@ -110,12 +181,14 @@ export class ProjectsService {
       where: { id: projectId },
       relations: ['members', 'members.user'],
     });
-    if (!project) throw new NotFoundException('프로젝트 없음');
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
 
-    return project.members.map((m) => ({
-      userId: m.user.id,
-      name: m.user.displayName ?? m.user.name,
-      role: m.role,
+    return project.members.map((member) => ({
+      userId: member.user.id,
+      name: member.user.displayName ?? member.user.name,
+      role: member.role,
     }));
   }
 
@@ -124,7 +197,9 @@ export class ProjectsService {
     const member = await this.projectMemberRepository.findOne({
       where: { project: { id: projectId }, user: { id: userId } },
     });
-    if (!member) throw new NotFoundException('프로젝트 멤버 없음');
+    if (!member) {
+      throw new NotFoundException('프로젝트 멤버 없음');
+    }
 
     member.role = newRole;
     return this.projectMemberRepository.save(member);
@@ -135,7 +210,9 @@ export class ProjectsService {
     const member = await this.projectMemberRepository.findOne({
       where: { project: { id: projectId }, user: { id: userId } },
     });
-    if (!member) throw new NotFoundException('프로젝트 멤버 없음');
+    if (!member) {
+      throw new NotFoundException('프로젝트 멤버 없음');
+    }
 
     return this.projectMemberRepository.remove(member);
   }
@@ -143,7 +220,9 @@ export class ProjectsService {
   /** 프로젝트 정보 업데이트 (이름, 설명, 아이콘) */
   async updateProject(projectId: string, updateProjectDto: UpdateProjectDto) {
     const project = await this.projectRepository.findOne({ where: { id: projectId } });
-    if (!project) throw new NotFoundException('프로젝트 없음');
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
 
     if (updateProjectDto.name !== undefined) project.name = updateProjectDto.name;
     if (updateProjectDto.description !== undefined) project.description = updateProjectDto.description;

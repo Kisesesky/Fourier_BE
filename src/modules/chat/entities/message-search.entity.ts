@@ -1,10 +1,10 @@
 import { User } from "src/modules/users/entities/user.entity";
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, Index, In } from "typeorm";
 
+@Entity()
 @Index(['scope', 'scopeId'])
 @Index(['content'], { fulltext: true })
 @Index(['sender'])
-@Entity()
 export class MessageSearch {
   @PrimaryGeneratedColumn('uuid')
   id: string;

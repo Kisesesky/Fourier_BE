@@ -12,16 +12,10 @@ export class MessageFile {
   @ManyToOne(() => File, { eager: true, onDelete: 'CASCADE' })
   file: File;
 
-  @ManyToOne(() => ChannelMessage, (message) => message.files, {
-    nullable: true,
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(() => ChannelMessage, (message) => message.files, { nullable: true, onDelete: 'CASCADE' })
   channelMessage?: ChannelMessage;
 
-  @ManyToOne(() => DmMessage, (message) => message.files, {
-    nullable: true,
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(() => DmMessage, (message) => message.files, { nullable: true, onDelete: 'CASCADE' })
   dmMessage?: DmMessage;
 
   @CreateDateColumn()

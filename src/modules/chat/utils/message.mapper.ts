@@ -9,8 +9,9 @@ export function mapMessageToResponse(
   message: ChannelMessage | DmMessage,
   currentUserId: string,
   options?: {
-    threadUnreadCount?: number,
-    lastReplyAt?: Date,
+    threadUnreadCount?: number;
+    pinnedMessageIds?: Set<string>;
+    savedMessageIds?: Set<string>;
   }
 ): MessageResponseDto {
   const isDeleted = message.isDeleted === true;
@@ -39,6 +40,17 @@ export function mapMessageToResponse(
       ? []
       : buildReactionDto(message.reactions ?? [], currentUserId),
     thread: buildThreadMeta(message, options),
+    isPinned: options?.pinnedMessageIds?.has(message.id) ?? false,
+    isSaved: options?.savedMessageIds?.has(message.id) ?? false,
+    linkPreview: message.linkPreview
+      ? {
+          url: message.linkPreview.url,
+          title: message.linkPreview.title,
+          description: message.linkPreview.description,
+          imageUrl: message.linkPreview.imageUrl,
+          siteName: message.linkPreview.siteName,
+        }
+      : undefined,
   };
 }
 
@@ -75,7 +87,7 @@ function buildThreadMeta(
   if (message.parentMessage) return undefined;
 
   // DM은 thread 없음 (정책)
-  if (message instanceof DmMessage) return undefined;
+  if ('room' in message) return undefined;
 
   if (!message.replyCount || message.replyCount === 0) {
     return undefined;

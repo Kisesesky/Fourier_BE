@@ -8,5 +8,5 @@ export class WsTypingDto {
   roomId: string;
 
   @IsBoolean()
-  typing: boolean;
+  isTyping: boolean;
 }

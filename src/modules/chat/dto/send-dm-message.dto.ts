@@ -1,15 +1,11 @@
 // src/modules/chat/dto/send-dm.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsUUID, IsString, IsOptional, IsArray } from 'class-validator';
-import { MessageType } from '../constants/message-type.enum';
 
 export class SendDmMessageDto {
   @ApiProperty({ example: 'dm-room-uuid' })
   @IsUUID()
   roomId: string;
-
-  @ApiProperty({ enum: MessageType, example: MessageType.TEXT })
-  type: MessageType;
 
   @ApiProperty({ example: 'DM 메시지입니다' })
   @IsString()
@@ -20,4 +16,9 @@ export class SendDmMessageDto {
   @IsArray()
   @IsUUID('all', { each: true })
   fileIds?: string[];
+
+  @ApiPropertyOptional({ example: 'reply-message-uuid' })
+  @IsOptional()
+  @IsUUID()
+  replyToMessageId?: string;
 }

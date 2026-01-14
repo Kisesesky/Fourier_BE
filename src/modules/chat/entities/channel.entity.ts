@@ -2,6 +2,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn } from 'typeorm';
 import { Project } from '../../projects/entities/project.entity';
 import { ChannelMessage } from './channel-message.entity';
+import { ChannelMember } from './channel-member.entity';
 
 @Entity()
 export class Channel {
@@ -14,9 +15,15 @@ export class Channel {
   @ManyToOne(() => Project, (project) => project.channels, { onDelete: 'CASCADE' })
   project: Project;
 
-  @OneToMany(() => ChannelMessage, (msg) => msg.channel)
+  @Column({ default: false })
+  isDefault: boolean
+
+  @OneToMany(() => ChannelMessage, (message) => message.channel)
   messages: ChannelMessage[];
 
-  @CreateDateColumn()
+  @OneToMany(() => ChannelMember, member => member.channel)
+  members: ChannelMember[];
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

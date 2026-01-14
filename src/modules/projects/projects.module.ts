@@ -9,10 +9,12 @@ import { TeamMember } from '../team/entities/team-member.entity';
 import { ProjectAccessGuard } from './guards/project-access.guard';
 import { ProjectManageGuard } from './guards/project-manage.guard';
 import { Issue } from '../issues/entities/issue.entity';
+import { Channel } from '../chat/entities/channel.entity';
+import { ChannelMember } from '../chat/entities/channel-member.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, ProjectMember, TeamMember, Issue]),
+    TypeOrmModule.forFeature([Project, ProjectMember, TeamMember, Issue, Channel, ChannelMember]),
   ],
   providers: [ProjectsService, ProjectAccessGuard, ProjectManageGuard],
   controllers: [ProjectsController],
