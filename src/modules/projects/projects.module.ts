@@ -11,10 +11,16 @@ import { ProjectManageGuard } from './guards/project-manage.guard';
 import { Issue } from '../issues/entities/issue.entity';
 import { Channel } from '../chat/entities/channel.entity';
 import { ChannelMember } from '../chat/entities/channel-member.entity';
+import { CalendarModule } from '../calendar/calendar.module';
+import { DocsModule } from '../docs/docs.module';
+import { IssuesModule } from '../issues/issues.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Project, ProjectMember, TeamMember, Issue, Channel, ChannelMember]),
+    CalendarModule,
+    DocsModule,
+    IssuesModule,
   ],
   providers: [ProjectsService, ProjectAccessGuard, ProjectManageGuard],
   controllers: [ProjectsController],

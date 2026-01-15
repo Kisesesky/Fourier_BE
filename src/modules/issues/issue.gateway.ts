@@ -1,18 +1,18 @@
 // src/modules/issue/issue.gateway.ts
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { IssueService } from './issues.service';
+import { IssuesService } from './issues.service';
 import { WsUpdateProgressDto } from './dto/ws-update-progress.dto';
 import { WsUpdateStatusDto } from './dto/ws-update-status.dto';
 import { WsAddSubtaskDto } from './dto/ws-add-subtask.dto';
 import { WsRemoveSubtaskDto } from './dto/ws-remove-subtask.dto';
 
 @WebSocketGateway({ namespace: '/issue', cors: { origin: true } })
-export class IssueGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class IssuesGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private onlineUsers = new Map<string, string>();
 
-  constructor(private readonly issueService: IssueService) {}
+  constructor(private readonly issuesService: IssuesService) {}
 
   /** 연결 */
   handleConnection(client: Socket) {
@@ -37,7 +37,7 @@ export class IssueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** 하위 업무 추가 */
   @SubscribeMessage('add-subtask')
   async handleAddSubtask(@MessageBody() body: WsAddSubtaskDto) {
-    const subtask = await this.issueService.addSubtask(body);
+    const subtask = await this.issuesService.addSubtask(body);
     this.server.emit('subtask-added', subtask);
     return subtask;
   }
@@ -45,7 +45,7 @@ export class IssueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** 하위 업무 삭제 */
   @SubscribeMessage('remove-subtask')
   async handleRemoveSubtask(@MessageBody() body: WsRemoveSubtaskDto) {
-    const removed = await this.issueService.removeSubtask(body.subtaskId);
+    const removed = await this.issuesService.removeSubtask(body.subtaskId);
     this.server.emit('subtask-removed', removed);
     return removed;
   }
@@ -53,7 +53,7 @@ export class IssueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** 진행률 실시간 업데이트 */
   @SubscribeMessage('update-progress')
   async handleUpdateProgress(@MessageBody() body: WsUpdateProgressDto) {
-    const updatedIssue = await this.issueService.updateProgress(body.issueId, { progress: body.progress });
+    const updatedIssue = await this.issuesService.updateProgress(body.issueId, { progress: body.progress });
     this.server.emit('progress-updated', {
       issueId: updatedIssue.id,
       progress: updatedIssue.progress,
@@ -63,7 +63,7 @@ export class IssueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** 상태 업데이트 */
   @SubscribeMessage('update-status')
   async handleUpdateStatus(@MessageBody() body: WsUpdateStatusDto) {
-    const updated = await this.issueService.updateStatus(body.issueId, body.status);
+    const updated = await this.issuesService.updateStatus(body.issueId, body.status);
     this.server.emit('status-updated', { issueId: updated.id, status: updated.status });
   }
 }

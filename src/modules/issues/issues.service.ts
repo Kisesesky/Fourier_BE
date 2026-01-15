@@ -8,13 +8,13 @@ import { User } from '../users/entities/user.entity';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { IssueComment } from './entities/issue-comment.entity';
-import { WsAddSubtaskDto } from './dto/ws-add-subtask.dto';
 import { IssueResponseDto } from './dto/issue-response.dto';
 import { mapIssueToResponse } from './issue.mapper';
 import { IssueStatus } from './constants/issue-status.enum';
+import { AddSubtaskDto } from './dto/add-subtask.dto';
 
 @Injectable()
-export class IssueService {
+export class IssuesService {
   constructor(
     @InjectRepository(Issue)
     private readonly issueRepository: Repository<Issue>,
@@ -26,6 +26,90 @@ export class IssueService {
     private readonly issueCommentRepository: Repository<IssueComment>,
 
   ) {}
+
+  /** 상태 변경 (Kanban 보드용) */
+  async changeStatus(issueId: string, status: IssueStatus) {
+    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
+    if (!issue) {
+      throw new NotFoundException('이슈 없음');
+    }
+
+    issue.status = status;
+    return this.issueRepository.save(issue);
+  }
+
+  /** 프로젝트별 Kanban 보드 조회 */
+  async getProjectBoard(projectId: string) {
+    const issues = await this.issueRepository.find({
+      where: { project: { id: projectId } },
+      relations: ['assignee', 'subtasks'],
+      order: { createdAt: 'ASC' },
+    });
+
+    // 상태별 그룹핑 + 배열 반환
+    return Object.values(IssueStatus).map(status => ({
+      status,
+      issues: issues
+        .filter(i => i.status === status)
+        .map(i => ({
+          id: i.id,
+          title: i.title,
+          assigneeId: i.assignee?.id,
+          progress: i.progress,
+          startAt: i.startAt,
+          endAt: i.endAt,
+        })),
+    }));
+  }
+
+  /** 프로젝트 대시보드 통계 */
+  async getProjectDashboard(projectId: string) {
+    const issues = await this.issueRepository.find({
+      where: { project: { id: projectId } },
+      relations: ['assignee'],
+    });
+
+    const totalIssues = issues.length;
+    const statusCount: Record<string, number> = {};
+    Object.values(IssueStatus).forEach(s => (statusCount[s] = 0));
+
+    let totalProgress = 0;
+    const assigneeStats: Record<string, { issueCount: number; totalProgress: number }> = {};
+    const overdueIssues: Issue[] = [];
+    const now = new Date();
+
+    for (const issue of issues) {
+      statusCount[issue.status] += 1;
+      totalProgress += issue.progress;
+
+      if (issue.assignee) {
+        if (!assigneeStats[issue.assignee.id]) {
+          assigneeStats[issue.assignee.id] = { issueCount: 0, totalProgress: 0 };
+        }
+        assigneeStats[issue.assignee.id].issueCount += 1;
+        assigneeStats[issue.assignee.id].totalProgress += issue.progress;
+      }
+
+      if (issue.endAt && issue.endAt < now && issue.status !== IssueStatus.DONE) {
+        overdueIssues.push(issue);
+      }
+    }
+
+    const avgProgress = totalIssues > 0 ? Math.floor(totalProgress / totalIssues) : 0;
+    const assigneeStatsArray = Object.entries(assigneeStats).map(([userId, stat]) => ({
+      userId,
+      issueCount: stat.issueCount,
+      avgProgress: Math.floor(stat.totalProgress / stat.issueCount),
+    }));
+
+    return {
+      totalIssues,
+      statusCount,
+      avgProgress,
+      assigneeStats: assigneeStatsArray,
+      overdueIssues,
+    };
+  }
 
   /** 이슈 생성 */
   async createIssue(projectId: string, createIssueDto: CreateIssueDto, creator: User): Promise<IssueResponseDto> {
@@ -47,6 +131,10 @@ export class IssueService {
       creator,
       parent,
       assignee,
+      status: createIssueDto.status ?? IssueStatus.PLANNED,
+      progress: createIssueDto.progress ?? 0,
+      startAt: createIssueDto.startAt ? new Date(createIssueDto.startAt) : null,
+      endAt: createIssueDto.endAt ? new Date(createIssueDto.endAt) : null,
     });
 
     const saved = await this.issueRepository.save(issue);
@@ -61,15 +149,11 @@ export class IssueService {
     }
 
     if (updateIssueDto.assigneeId) {
-      const assignee = await this.userRepository.findOne({ where: { id: updateIssueDto.assigneeId } });
-      if (!assignee) {
-        throw new NotFoundException('사용자 없음');
-      }
-      issue.assignee = assignee;
+      issue.assignee = await this.userRepository.findOne({ where: { id: updateIssueDto.assigneeId } });
     }
+    Object.assign(issue, updateIssueDto);
 
-    const saved = await this.issueRepository.save(issue);
-    return mapIssueToResponse(saved);
+    return mapIssueToResponse(await this.issueRepository.save(issue));
   }
 
   /** 담당자 지정 */
@@ -85,8 +169,7 @@ export class IssueService {
     }
 
     issue.assignee = user;
-    const saved = await this.issueRepository.save(issue);
-    return mapIssueToResponse(saved);
+    return mapIssueToResponse(await this.issueRepository.save(issue));
   }
 
   /** 프로젝트 내 모든 이슈 조회 */
@@ -108,30 +191,38 @@ export class IssueService {
   }
 
   /** 하위 업무 추가 */
-  async addSubtask(wsAddSubtaskDto: WsAddSubtaskDto) {
+  async addSubtask(addSubtaskDto: AddSubtaskDto) {
     const parent = await this.issueRepository.findOne({
-      where: { id: wsAddSubtaskDto.parentId },
+      where: { id: addSubtaskDto.parentId },
       relations: ['subtasks']
     });
     if (!parent) {
       throw new NotFoundException('상위 업무 없음');
     }
 
-    const assignee = wsAddSubtaskDto.assigneeId ? { id: wsAddSubtaskDto.assigneeId } : null;
+    const assignee = addSubtaskDto.assigneeId ? { id: addSubtaskDto.assigneeId } : null;
     const subtask = this.issueRepository.create({
-      title: wsAddSubtaskDto.title,
+      title: addSubtaskDto.title,
       parent,
       assignee,
-      startAt: wsAddSubtaskDto.startAt,
-      endAt: wsAddSubtaskDto.dueAt,
+      startAt: addSubtaskDto.startAt ? new Date(addSubtaskDto.startAt) : null,
+      endAt: addSubtaskDto.dueAt ? new Date(addSubtaskDto.dueAt) : null,
     });
 
-    await this.issueRepository.save(subtask);
-
-    // 부모 진행률 재계산
+    const saved = await this.issueRepository.save(subtask);
     await this.recalculateParentProgress(parent);
+    return saved;
+  }
 
-    return subtask;
+  /** 커멘트 추가 */
+  async addComment(issueId: string, user: User, content: string) {
+    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
+    if (!issue) {
+      throw new NotFoundException('이슈 없음');
+    }
+
+    const comment = this.issueCommentRepository.create({ issue, author: user, content });
+    return this.issueCommentRepository.save(comment);
   }
 
   /** 하위 업무 삭제 */
@@ -157,7 +248,7 @@ export class IssueService {
   async updateProgress(issueId: string, data: { progress: number }) {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
-      relations: ['subtasks', 'parent']
+      relations: ['parent']
     });
     if (!issue) {
       throw new NotFoundException('이슈 없음');
@@ -166,12 +257,25 @@ export class IssueService {
     issue.progress = data.progress;
     await this.issueRepository.save(issue);
 
-    // 상위 업무 진행률 자동 재계산
     if (issue.parent) {
       await this.recalculateParentProgress(issue.parent);
     }
 
     return issue;
+  }
+
+  /** 상위 업무 진행률 재계산 */
+  async recalculateParentProgress(parent: Issue) {
+    const subtasks = await this.issueRepository.find({ where: { parent: { id: parent.id } } });
+    if (!subtasks.length) return;
+
+    parent.progress = Math.floor(subtasks.reduce((sum, s) => sum + s.progress, 0) / subtasks.length);
+    await this.issueRepository.save(parent);
+
+    // 재귀적으로 상위 업무까지 반영
+    if (parent.parent) {
+      await this.recalculateParentProgress(parent.parent);
+    }
   }
 
   /** 상태 업데이트 */
@@ -183,31 +287,5 @@ export class IssueService {
 
     issue.status = status;
     return this.issueRepository.save(issue);
-  }
-
-  /** 상위 업무 진행률 재계산 */
-  async recalculateParentProgress(parent: Issue) {
-    const subtasks = await this.issueRepository.find({ where: { parent: { id: parent.id } } });
-    if (!subtasks.length) return;
-
-    const avgProgress = Math.floor(subtasks.reduce((sum, s) => sum + s.progress, 0) / subtasks.length);
-    parent.progress = avgProgress;
-    await this.issueRepository.save(parent);
-
-    // 재귀적으로 상위 업무까지 반영
-    if (parent.parent) {
-      await this.recalculateParentProgress(parent.parent);
-    }
-  }
-
-  /** 커멘트 추가 */
-  async addComment(issueId: string, user: User, content: string) {
-    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
-    if (!issue) {
-      throw new NotFoundException('이슈 없음');
-    }
-
-    const comment = this.issueCommentRepository.create({ issue, author: user, content });
-    return this.issueCommentRepository.save(comment);
   }
 }

@@ -11,6 +11,11 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectRole } from './constants/project-role.enum';
 import { Channel } from '../chat/entities/channel.entity';
 import { ChannelMember } from '../chat/entities/channel-member.entity';
+import { CalendarService } from '../calendar/calendar.service';
+import { CalendarCategory } from '../calendar/constants/calendar-category.enum';
+import { DocsService } from '../docs/docs.service';
+import { IssuesService } from '../issues/issues.service';
+import { IssueStatus } from '../issues/constants/issue-status.enum';
 
 @Injectable()
 export class ProjectsService {
@@ -25,6 +30,9 @@ export class ProjectsService {
     private readonly channelRepository: Repository<Channel>,
     @InjectRepository(ChannelMember)
     private readonly channelMemberRepository: Repository<ChannelMember>,
+    private readonly calendarService: CalendarService,
+    private readonly docsService: DocsService,
+    private readonly issuesService: IssuesService,
   ) {}
 
   /** 프로젝트 생성 */
@@ -111,6 +119,41 @@ export class ProjectsService {
         );
       }
     }
+
+    // 7. 캘린더 기본 이벤트 생성
+    const start = new Date();
+    const end = new Date(start.getTime() + 60 * 60 * 1000); // 1시간 기본
+
+    await this.calendarService.createEvent(project.id, {
+      title: '프로젝트 시작',
+      category: CalendarCategory.TEAM,
+      startAt: start,
+      endAt: end,
+    }, user);
+
+    // 8. Docs 루트 폴더/문서 생성
+    const rootFolder = await this.docsService.createFolder({
+      name: 'Docs',
+    }, user);
+
+    await this.docsService.createDocument({
+      title: '첫 문서',
+      content: '프로젝트 문서 작성 시작',
+      folderId: rootFolder.id,
+    }, user);
+
+    // 9. Issue 기본 업무 생성
+    const starts = new Date();
+    const ends = new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000); // 1주 기본
+
+    const issue = await this.issuesService.createIssue(project.id, {
+      title: '첫 업무',
+      progress: 0,
+      status: IssueStatus.PLANNED,
+      startAt: starts.toISOString(),
+      endAt: ends.toISOString(),
+    }, user);
+
 
     return project;
   }

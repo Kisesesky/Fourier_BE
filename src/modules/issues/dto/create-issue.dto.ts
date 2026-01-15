@@ -1,5 +1,5 @@
 // src/modules/issue/dto/create-issue.dto.ts
-import { IsUUID, IsString, IsOptional, IsEnum, IsDateString } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsEnum, IsDateString, IsNumber } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IssueStatus } from '../constants/issue-status.enum';
 
@@ -27,6 +27,11 @@ export class CreateIssueDto {
   @IsOptional()
   @IsDateString()
   endAt?: string;
+
+  @ApiPropertyOptional({ example: '1' })
+  @IsOptional()
+  @IsNumber()
+  progress?: number;
 
   @ApiPropertyOptional({ example: 'parent-issue-uuid', description: '상위 이슈 ID (서브태스크인 경우)' })
   @IsOptional()
