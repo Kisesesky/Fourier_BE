@@ -1,5 +1,5 @@
 // src/modules/chat/chat.controller.ts
-import { Controller, Get, Post,  Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post,  Body, Query, UseGuards, Param } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -14,6 +14,8 @@ import { ReadChannelMessageDto } from './dto/read-channel-message.dto';
 import { UnreadCountDto } from './dto/unread-count.dto';
 import { ReadDmMessageDto } from './dto/read-dm-message.dto';
 import { GetMessageContextDto } from './dto/get-message-context.dto';
+import { mapMessageToResponse } from './utils/message.mapper';
+import { SendThreadMessageDto } from './dto/send-thread-message.dto';
 
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
@@ -31,10 +33,13 @@ export class ChatController {
     @RequestUser() user: User,
     @Body() sendChannelMessageDto: SendChannelMessageDto
   ) {
-    return this.chatService.sendChannelMessage(user, sendChannelMessageDto);
+    return mapMessageToResponse(
+      await this.chatService.sendChannelMessage(user, sendChannelMessageDto),
+      user.id,
+    );
   }
 
-  @ApiOperation({ summary: '채널에서 메세지 목록'})
+  @ApiOperation({ summary: '채널에서 메시지 목록'})
   @ApiOkResponse({ type: [MessageResponseDto] })
   @Get('channel/messages')
   async getChannelMessages(
@@ -44,7 +49,7 @@ export class ChatController {
     return this.chatService.getChannelMessages(getChannelMessagesDto.channelId, user, getChannelMessagesDto.limit, getChannelMessagesDto.cursor);
   }
 
-  @ApiOperation({ summary: '채널 읽음 처리' })
+  @ApiOperation({ summary: '채널 메시지 읽음 처리' })
   @Post('channel/read')
   async readChannel(
     @RequestUser() user: User,
@@ -54,31 +59,31 @@ export class ChatController {
     return { success: true };
   }
 
-  @ApiOperation({ summary: '채널 unread 수' })
+  @ApiOperation({ summary: '채널 메시지 unread 수' })
   @Get('channel/unread')
   async getChannelUnread(
     @RequestUser() user: User,
     @Query() unreadCountDto: UnreadCountDto,
   ) {
     return {
-      count: await this.chatService.getChannelUnreadCount(
-        unreadCountDto.id,
-        user.id,
-      ),
+      count: await this.chatService.getChannelUnreadCount(unreadCountDto.id, user.id)
     };
   }
 
-  @ApiOperation({ summary: '메시지 보내기'})
+  @ApiOperation({ summary: 'DM 보내기'})
   @ApiOkResponse({ type: MessageResponseDto })
   @Post('dm/message')
   async sendDmMessage(
     @RequestUser() user: User,
     @Body() sendDmMessageDto: SendDmMessageDto
   ) {
-    return this.chatService.sendDM(user, sendDmMessageDto);
+    return mapMessageToResponse(
+      await this.chatService.sendDM(user, sendDmMessageDto),
+      user.id,
+    );
   }
 
-  @ApiOperation({ summary: '메시지 가져오기'})
+  @ApiOperation({ summary: 'DM 메시지 목록'})
   @ApiOkResponse({ type: [MessageResponseDto] })
   @Get('dm/messages')
   async getDmMessages(
@@ -105,18 +110,44 @@ export class ChatController {
     @Query() unreadCountDto: UnreadCountDto,
   ) {
     return {
-      count: await this.chatService.getDmUnreadCount(
-        unreadCountDto.id,
-        user.id,
-      ),
+      count: await this.chatService.getDmUnreadCount(unreadCountDto.id, user.id)
     };
   }
 
+  @ApiOperation({ summary: '스레드 메시지 목록' })
+  @ApiOkResponse({ type: [MessageResponseDto] })
+  @Get('thread/messages')
+  async getThreadMessages(
+    @RequestUser() user: User,
+    @Query('parentMessageId') parentMessageId: string
+  ): Promise<MessageResponseDto[]> {
+    return this.chatService.getThreadMessages(parentMessageId, user);
+  }
+
+  @ApiOperation({ summary: '스레드 메시지 보내기' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @Post('thread/message')
+  async sendThreadMessage(
+    @RequestUser() user: User,
+    @Body() sendThreadMessageDto: SendThreadMessageDto,
+  ): Promise<MessageResponseDto> {
+    return mapMessageToResponse(
+      await this.chatService.sendThreadMessage(
+        user,
+        sendThreadMessageDto.threadParentId,
+        sendThreadMessageDto.content,
+        sendThreadMessageDto.fileIds ?? []
+      ),
+      user.id,
+    );
+  }
+
+  @ApiOperation({ summary: '메시지 컨텍스트 조회' })
   @Get('messages/context')
   getMessageContext(
     @RequestUser() user: User,
-    @Query() dto: GetMessageContextDto,
+    @Query() getMessageContextDto: GetMessageContextDto,
   ) {
-    return this.chatService.getMessageContext(user, dto);
+    return this.chatService.getMessageContext(user, getMessageContextDto);
   }
 }

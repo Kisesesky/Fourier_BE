@@ -3,9 +3,9 @@ import { ApiProperty } from "@nestjs/swagger";
 import { IsBoolean, IsUUID } from "class-validator";
 
 export class WsThreadTypingDto {
-  @ApiProperty({ example: 'dm-room-uuid' })
+  @ApiProperty({ example: 'thread-parent-message-uuid' })
   @IsUUID()
-  parentMessageId: string;
+  threadParentId: string;
 
   @IsBoolean()
   isTyping: boolean;

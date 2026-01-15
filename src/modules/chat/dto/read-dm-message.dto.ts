@@ -2,6 +2,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ReadDmMessageDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'dm-room-uuid' })
   roomId: string;
 }

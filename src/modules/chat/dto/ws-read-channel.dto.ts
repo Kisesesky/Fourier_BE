@@ -2,7 +2,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsUUID } from 'class-validator';
 
-export class WsReadMessageDto {
+export class WsReadChannelDto {
   @ApiProperty({ example: 'message-uuid', required: false })
   @IsUUID()
   messageId: string;

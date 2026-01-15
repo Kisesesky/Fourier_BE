@@ -1,7 +1,6 @@
 // src/modules/chat/dto/message-response.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 import { MessageType } from '../constants/message-type.enum';
-import { LinkPreviewDto } from './link-preview.dto';
 
 export class MessageFileDto {
   @ApiProperty({ example: 'file-uuid' })
@@ -35,14 +34,14 @@ export class MessageReactionDto {
 }
 
 export class MessageThreadDto {
-  @ApiProperty({ example: '1' })
-  replyCount: number;
+  @ApiProperty({ example: 3 })
+  count: number;
 
-  @ApiProperty({ example: '1' })
+  @ApiProperty({ example: 1 })
   unreadCount: number;
 
-  @ApiProperty({ example: '2026....' })
-  lastReplyAt?: Date;
+  @ApiProperty({ example: '2026-01-01T12:00:00.000Z' })
+  lastMessageAt?: Date;
 }
 
 export class ReplyDto {
@@ -55,11 +54,29 @@ export class ReplyDto {
   @ApiProperty({ example: '' })
   sender: {
     id: string;
-    nickname: string;
+    name: string;
+    avatar?: string;
   };
 
   @ApiProperty({ example: '' })
   isDeleted: boolean;
+}
+
+export class LinkPreviewDto {
+  @ApiProperty()
+  url: string;
+
+  @ApiProperty({ required: false })
+  title?: string;
+
+  @ApiProperty({ required: false })
+  description?: string;
+
+  @ApiProperty({ required: false })
+  imageUrl?: string;
+
+  @ApiProperty({ required: false })
+  siteName?: string;
 }
 
 export class MessageResponseDto {
@@ -72,29 +89,33 @@ export class MessageResponseDto {
   @ApiProperty({ example: '안녕하세요', required: false })
   content?: string;
 
-  @ApiProperty({ type: [MessageFileDto] })
-  files?: MessageFileDto[];
-
   @ApiProperty({ example: 'user-uuid' })
   senderId: string;
 
+  @ApiProperty({ example: '' })
+  sender: {
+    id: string;
+    name: string;
+    avatar?: string;
+  };
+
+  @ApiProperty({ type: ReplyDto, required: false })
+  reply?: ReplyDto;
+
   @ApiProperty({ required: false })
-  parentMessageId?: string;
-
-  @ApiProperty({ example: 3 })
-  replyCount: number;
-
-  @ApiProperty({ type: [MessageReactionDto] })
-  reactions?: MessageReactionDto[];
+  threadParentId?: string;
 
   @ApiProperty({ type: MessageThreadDto, required: false })
   thread?: MessageThreadDto;
 
-  @ApiProperty({ example: false })
-  isDeleted: boolean;
+  @ApiProperty({ example: '2025-01-01T12:00:00.000Z' })
+  createdAt: Date;
 
   @ApiProperty({ example: '2025-01-01T12:00:00.000Z', required: false })
-  editedAt?: Date;
+  editedAt: Date;
+
+  @ApiProperty({ example: false })
+  isDeleted: boolean;
 
   @ApiProperty({ example: false })
   isPinned?: boolean;
@@ -102,11 +123,11 @@ export class MessageResponseDto {
   @ApiProperty({ example: false })
   isSaved?: boolean;
 
-  @ApiProperty({ type: ReplyDto, required: false })
-  reply?: ReplyDto;
+  @ApiProperty({ type: [MessageFileDto] })
+  files?: MessageFileDto[];
 
-  @ApiProperty({ example: '2025-01-01T12:00:00.000Z' })
-  createdAt: Date;
+  @ApiProperty({ type: [MessageReactionDto] })
+  reactions?: MessageReactionDto[];
 
   @ApiProperty({ type: LinkPreviewDto, required: false })
   linkPreview?: LinkPreviewDto;

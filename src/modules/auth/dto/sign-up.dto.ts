@@ -32,4 +32,8 @@ export class SignUpDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   agreedPrivacy: boolean;
+
+  @IsOptional()
+  @IsString()
+  avatar?: string;
 }

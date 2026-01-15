@@ -97,10 +97,7 @@ export class ChatService {
   }
 
   private async updateSearchIndex(messageId: string, content: string) {
-    await this.messageSearchRepository.update(
-      { messageId },
-      { content },
-    );
+    await this.messageSearchRepository.update({ messageId }, { content });
   }
 
   private async getChannelMessageContext(
@@ -131,6 +128,7 @@ export class ChatService {
       .leftJoinAndSelect('message.sender', 'sender')
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.linkPreview', 'linkPreview')
       .where('message.channelId = :channelId', {
         channelId: channelMessage.channel.id,
       })
@@ -186,11 +184,7 @@ export class ChatService {
     };
   }
 
-  private async createLinkPreviewAsync({
-    scope,
-    message,
-    url,
-  }: {
+  private async createLinkPreviewAsync({ scope, message, url }: {
     scope: 'CHANNEL' | 'DM';
     message: ChannelMessage | DmMessage;
     url: string;
@@ -201,39 +195,11 @@ export class ChatService {
 
       await this.linkPreviewRepository.save({
         ...preview,
-        ...(scope === 'CHANNEL'
-          ? { channelMessage: message }
-          : { dmMessage: message }),
+        ...(scope === 'CHANNEL' ? { channelMessage: message } : { dmMessage: message }),
       });
 
-      this.eventEmitter.emit('linkPreview.created', {
-        scope,
-        message,
-        preview,
-      });
+      this.eventEmitter.emit('linkPreview.created', { scope, message, preview });
     });
-  }
-
-  async getMessageContext(
-    user: User,
-    getMessageContextDto: GetMessageContextDto,
-  ) {
-    const scoped = await this.findScopedMessageById(getMessageContextDto.messageId);
-    const limit = getMessageContextDto.limit ?? 20;
-
-    if (scoped.scope === 'CHANNEL') {
-      return this.getChannelMessageContext(
-        scoped.message as ChannelMessage,
-        user,
-        limit,
-      );
-    }
-
-    return this.getDmMessageContext(
-      scoped.message as DmMessage,
-      user,
-      limit,
-    );
   }
 
   /** JWT 토큰 검증 후 User 반환 */
@@ -258,7 +224,21 @@ export class ChatService {
     }
     return this.verifyToken(token);
   }
-  
+
+  /** 유저가 참여 중인 프로젝트 채널 ID 배열 반환 */
+  async getUserChannelIds(userId: string): Promise<string[]> {
+    const channels = await this.channelRepository
+      .createQueryBuilder('channel')
+      .innerJoin('channel.project', 'project')
+      .innerJoin('project.members', 'member')
+      .where('member.userId = :userId', { userId })
+      .select('channel.id')
+      .getMany();
+
+    return channels.map(channel => channel.id);
+  }
+
+
   /** 유저가 참여 중인 DM room ID 배열 반환 */
   async getUserDmRoomIds(userId: string): Promise<string[]> {
     const rooms = await this.dmRoomRepository
@@ -271,28 +251,13 @@ export class ChatService {
     return rooms.map(room => room.id);
   }
 
-  /** 유저가 참여 중인 프로젝트 채널 ID 배열 반환 */
-  async getUserChannelIds(userId: string): Promise<string[]> {
-    // 채널 참여자는 프로젝트 멤버여야 함
-    // 여기서는 단순히 유저가 속한 프로젝트의 채널 반환
-    const channels = await this.channelRepository
-      .createQueryBuilder('channel')
-      .innerJoin('channel.project', 'project')
-      .innerJoin('project.members', 'member')
-      .where('member.userId = :userId', { userId })
-      .select('channel.id')
-      .getMany();
-
-    return channels.map(channel => channel.id);
-  }
-
   async findScopedMessageById(
     messageId: string,
   ): Promise<ScopedMessage<ChannelMessage | DmMessage>> {
 
     const channelMessage = await this.channelMessageRepository.findOne({
       where: { id: messageId },
-      relations: ['channel'],
+      relations: ['sender', 'channel', 'threadParent', 'files', 'files.file', 'linkPreview', 'replyTo'],
     });
 
     if (channelMessage) {
@@ -301,7 +266,7 @@ export class ChatService {
 
     const dmMessage = await this.dmMessageRepository.findOne({
       where: { id: messageId },
-      relations: ['room'],
+      relations: ['room', 'sender', 'files', 'files.file', 'linkPreview', 'replyTo'],
     });
 
     if (dmMessage) {
@@ -322,19 +287,45 @@ export class ChatService {
     }
 
     let replyTo: ChannelMessage | undefined;
+    let threadParent: ChannelMessage | undefined;
 
     if (sendChannelMessageDto.replyToMessageId) {
       replyTo = await this.channelMessageRepository.findOne({
         where: { id: sendChannelMessageDto.replyToMessageId },
+        relations: ['threadParent'],
       });
+
+      if (!replyTo) {
+        throw new NotFoundException('reply 대상 메시지 없음');
+      }
+
+      // 메인 타임라인에서는 thread 메시지에 reply 불가
+      if (replyTo.threadParent && !sendChannelMessageDto.threadParentId) {
+        throw new BadRequestException(
+          '스레드 메시지에는 메인 채널에서 답장할 수 없습니다.',
+        );
+      }
     }
 
-    let parentMessage: ChannelMessage | undefined;
-
-    if (sendChannelMessageDto.parentMessageId) {
-      parentMessage = await this.channelMessageRepository.findOneByOrFail({
-        id: sendChannelMessageDto.parentMessageId,
+    if (sendChannelMessageDto.threadParentId) {
+      threadParent = await this.channelMessageRepository.findOne({
+        where: { id: sendChannelMessageDto.threadParentId },
+        relations: ['threadParent'],
       });
+
+      if (!threadParent) {
+        throw new NotFoundException('thread parent 메시지 없음');
+      }
+
+      if (threadParent.threadParent) {
+        throw new BadRequestException('중첩 스레드는 허용되지 않습니다.');
+      }
+    }
+
+    if (replyTo && threadParent) {
+      if (replyTo.threadParent?.id !== threadParent.id) {
+        throw new BadRequestException('다른 스레드의 메시지에는 답장할 수 없습니다.');
+      }
     }
 
     let fileIds = sendChannelMessageDto.fileIds ?? [];
@@ -353,22 +344,22 @@ export class ChatService {
       fileIds = [textFile.id];
     }
 
-    const hasFiles = fileIds.length > 0;
-    const type = hasFiles ? MessageType.FILE : MessageType.TEXT;
-
     // 1. 메시지 생성
     const message = await this.channelMessageRepository.save({
       channel,
       sender: user,
-      type,
-      content: hasFiles ? null : sendChannelMessageDto.content,
+      senderId: user.id,
+      senderName: user.displayName ?? user.name,
+      senderAvatar: user.avatarUrl,
+      type: fileIds.length ? MessageType.FILE : MessageType.TEXT,
+      content: fileIds.length ? null : sendChannelMessageDto.content,
       preview: makePreview(sendChannelMessageDto.content),
       replyTo,
-      parentMessage,
+      threadParent,
     });
 
     // 2. 메시지 ↔ 파일 연결
-    if (hasFiles) {
+    if (fileIds.length) {
       await this.messageFileRepository.save(
         fileIds.map(fileId => ({
           channelMessage: message,
@@ -380,15 +371,33 @@ export class ChatService {
     const url = extractFirstUrl(sendChannelMessageDto.content);
 
     if (url) {
-      this.createLinkPreviewAsync({
-        scope: 'CHANNEL',
-        message,
-        url,
-      });
+      this.createLinkPreviewAsync({ scope: 'CHANNEL', message, url });
     }
 
     await this.indexChannelMessage(message);
     return message;
+  }
+
+  async getMessageContext(
+    user: User,
+    getMessageContextDto: GetMessageContextDto,
+  ) {
+    const scoped = await this.findScopedMessageById(getMessageContextDto.messageId);
+    const limit = getMessageContextDto.limit ?? 20;
+
+    if (scoped.scope === 'CHANNEL') {
+      return this.getChannelMessageContext(
+        scoped.message as ChannelMessage,
+        user,
+        limit,
+      );
+    }
+
+    return this.getDmMessageContext(
+      scoped.message as DmMessage,
+      user,
+      limit,
+    );
   }
 
   /** 채널 메시지 조회 */
@@ -414,7 +423,7 @@ export class ChatService {
     const messages = await qb.getMany();
 
     const parentIds = messages
-      .filter(m => !m.parentMessage && m.replyCount > 0)
+      .filter(m => !m.threadParent && m.threadCount > 0)
       .map(m => m.id);
 
     const unreadMap = await this.getThreadUnreadCountMap(
@@ -435,11 +444,11 @@ export class ChatService {
 
     const rooms = await this.dmRoomRepository
       .createQueryBuilder('room')
-      .leftJoinAndSelect('room.participants', 'user')
+      .leftJoinAndSelect('room.participants', 'participant')
       .getMany();
 
-    const existing = rooms.find(r => {
-      const ids = r.participants.map(p => p.id).sort();
+    const existing = rooms.find(room => {
+      const ids = room.participants.map(participant => participant.id).sort();
       return ids.join(',') === sortedIds.join(',');
     });
 
@@ -467,6 +476,9 @@ export class ChatService {
       replyTo = await this.dmMessageRepository.findOne({
         where: { id: sendDmMessageDto.replyToMessageId },
       });
+      if (!replyTo) {
+        throw new NotFoundException('reply 대상 메시지가 없습니다.');
+      }
     }
 
     let fileIds = sendDmMessageDto.fileIds ?? [];
@@ -484,21 +496,21 @@ export class ChatService {
       fileIds = [textFile.id];
     }
 
-    const hasFiles = fileIds.length > 0;
-    const type = hasFiles ? MessageType.FILE : MessageType.TEXT;
-
     // 1. 메시지 생성
     const message = await this.dmMessageRepository.save({
       room,
       sender: user,
-      type,
-      content: hasFiles ? null : sendDmMessageDto.content,
+      senderId: user.id,
+      senderName: user.displayName ?? user.name,
+      senderAvatar: user.avatarUrl,
+      type: fileIds.length ? MessageType.FILE : MessageType.TEXT,
+      content: fileIds.length ? null : sendDmMessageDto.content,
       preview: makePreview(sendDmMessageDto.content),
       replyTo,
     });
 
     // 2. 메시지 ↔ 파일 연결
-    if (hasFiles) {
+    if (fileIds.length) {
       await this.messageFileRepository.save(
         fileIds.map(fileId => ({
           dmMessage: message,
@@ -510,11 +522,7 @@ export class ChatService {
     const url = extractFirstUrl(sendDmMessageDto.content);
 
     if (url) {
-      this.createLinkPreviewAsync({
-        scope: 'DM',
-        message,
-        url,
-      });
+      this.createLinkPreviewAsync({ scope: 'DM', message, url });
     }
 
     await this.indexDmMessage(message);
@@ -527,13 +535,13 @@ export class ChatService {
     user: User,
     limit = 50,
     cursor?: string
-  ): Promise<MessageResponseDto[]> {
+  ) {
     const room = await this.dmRoomRepository.findOne({
       where: { id: roomId },
-      relations: ['participants', 'messages', 'messages.sender'],
+      relations: ['participants'],
     });
-    if (!room) {
-      throw new NotFoundException('DM 방 없음');
+    if (!room || !room.participants.some(participant => participant.id === user.id)) {
+      throw new NotFoundException('참여자가 아닙니다.');
     }
 
     const qb = this.dmMessageRepository
@@ -628,14 +636,29 @@ export class ChatService {
   }
 
   async getThreadMessages(
-    parentMessageId: string,
+    threadParentId: string,
     user: User
   ) {
     const replies = await this.channelMessageRepository.find({
-      where: { parentMessage: { id: parentMessageId } },
+      where: { threadParent: { id: threadParentId } },
       relations: ['sender', 'files', 'files.file'],
       order: { createdAt: 'ASC' },
     });
+
+    const parent = await this.channelMessageRepository.findOne({
+      where: { id: threadParentId },
+      relations: ['channel', 'channel.project', 'channel.project.members'],
+    });
+
+    if (!parent) throw new NotFoundException();
+
+    const isMember = parent.channel.project.members.some(
+      m => m.user.id === user.id,
+    );
+
+    if (!isMember) {
+      throw new ForbiddenException('채널 접근 권한 없음');
+    }
 
     return replies.map(message => mapMessageToResponse(message, user.id));
   }
@@ -677,51 +700,64 @@ export class ChatService {
 
   async sendThreadMessage(
     user: User,
-    parentMessageId: string,
+    threadParentId: string,
     content?: string,
     fileIds: string[] = [],
   ) {
     const parent = await this.channelMessageRepository.findOne({
-      where: { id: parentMessageId },
+      where: { id: threadParentId },
       relations: ['channel'],
     });
     
     if (!parent) {
       throw new NotFoundException('DM 메시지에는 스레드를 생성할 수 없습니다.');
     }
+    if (parent.threadParent) {
+      throw new BadRequestException('스레드 안에 스레드를 생성할 수 없습니다.');
+    }
   
-    const reply = await this.channelMessageRepository.save({
-        channel: parent.channel,
-        sender: user,
-        parentMessage: parent,
-        type: fileIds.length ? MessageType.FILE : MessageType.TEXT,
-        content,
-      });
+    const threadMessage = await this.channelMessageRepository.save({
+      channel: parent.channel,
+      sender: user,
+      senderId: user.id,
+      senderName: user.displayName ?? user.name,
+      senderAvatar: user.avatarUrl,
+      threadParent: parent,
+      type: fileIds.length ? MessageType.FILE : MessageType.TEXT,
+      content,
+    });
 
-    parent.replyCount += 1;
-    parent.lastReplyAt = new Date();
-    await this.channelMessageRepository.save(parent);
+    await this.channelMessageRepository.increment(
+      { id: parent.id },
+      'threadCount',
+      1,
+    );
+
+    await this.channelMessageRepository.update(
+      { id: parent.id },
+      { lastThreadAt: new Date() },
+    );
 
     if (fileIds.length) {
       await this.messageFileRepository.save(
         fileIds.map((fileId) => ({
           file: { id: fileId },
-          channelMessage: reply,
+          channelMessage: threadMessage,
         })),
       );
     }
 
-    return reply;
+    return threadMessage;
   }
 
   async markThreadRead(
     user: User,
-    parentMessageId: string,
+    threadParentId: string,
   ) {
     const existing = await this.threadReadRepository.findOne({
       where: {
         user: { id: user.id },
-        parentMessage: { id: parentMessageId },
+        threadParent: { id: threadParentId },
       },
     });
 
@@ -732,26 +768,26 @@ export class ChatService {
 
     return this.threadReadRepository.save({
       user,
-      parentMessage: { id: parentMessageId },
+      threadParent: { id: threadParentId },
       lastReadAt: new Date(),
     });
   }
 
   async getThreadUnreadCount(
-    parentMessageId: string,
+    threadParentId: string,
     userId: string,
   ): Promise<number> {
     const lastRead = await this.threadReadRepository.findOne({
       where: {
         user: { id: userId },
-        parentMessage: { id: parentMessageId },
+        threadParent: { id: threadParentId },
       },
     });
 
     const qb = this.channelMessageRepository
       .createQueryBuilder('message')
-      .innerJoin('message.parentMessage', 'parent')
-      .where('parent.id = :parentMessageId', { parentMessageId });
+      .innerJoin('message.threadParent', 'parent')
+      .where('parent.id = :threadParentId', { threadParentId });
 
     if (lastRead) {
       qb.andWhere('message.createdAt > :lastReadAt', {
@@ -834,31 +870,31 @@ export class ChatService {
   }
 
   async getThreadUnreadCountMap(
-    parentMessageIds: string[],
+    threadParentIds: string[],
     userId: string,
   ): Promise<Record<string, number>> {
 
-    if (parentMessageIds.length === 0) return {};
+    if (threadParentIds.length === 0) return {};
 
     const reads = await this.threadReadRepository.find({
       where: {
         user: { id: userId },
-        parentMessage: { id: In(parentMessageIds) },
+        threadParent: { id: In(threadParentIds) },
       },
     });
 
     const readMap = new Map(
-      reads.map(r => [r.parentMessage.id, r.lastReadAt]),
+      reads.map(r => [r.threadParent.id, r.lastReadAt]),
     );
 
     const qb = this.channelMessageRepository
       .createQueryBuilder('reply')
-      .select('reply.parentMessageId', 'parentId')
+      .select('reply.threadParentId', 'parentId')
       .addSelect('COUNT(reply.id)', 'count')
-      .where('reply.parentMessageId IN (:...ids)', {
-        ids: parentMessageIds,
+      .where('reply.threadParentId IN (:...ids)', {
+        ids: threadParentIds,
       })
-      .groupBy('reply.parentMessageId');
+      .groupBy('reply.threadParentId');
 
     const rows = await qb.getRawMany();
 

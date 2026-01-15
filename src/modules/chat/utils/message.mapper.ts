@@ -12,7 +12,7 @@ export function mapMessageToResponse(
     threadUnreadCount?: number;
     pinnedMessageIds?: Set<string>;
     savedMessageIds?: Set<string>;
-  }
+  },
 ): MessageResponseDto {
   const isDeleted = message.isDeleted === true;
 
@@ -20,26 +20,20 @@ export function mapMessageToResponse(
     id: message.id,
     type: isDeleted ? MessageType.SYSTEM : message.type,
     content: isDeleted ? '삭제된 메시지입니다.' : message.content ?? undefined,
-    senderId: message.sender.id,
-    parentMessageId: message.parentMessage?.id,
-    replyCount: message.replyCount ?? 0,
+    senderId: message.senderId,
+    sender: {
+      id: message.senderId,
+      name: message.senderName,
+      avatar: message.senderAvatar,
+    },
+    reply: buildReply(message),
+    threadParentId: message.threadParent?.id,
+    thread: buildThreadMeta(message, options),
     createdAt: message.createdAt,
     editedAt: message.editedAt ?? undefined,
     isDeleted,
-    files: isDeleted
-      ? []
-      : (message.files ?? []).map((messagefile): MessageFileDto => ({
-          id: messagefile.file.id,
-          fileUrl: messagefile.file.fileUrl,
-          fileName: messagefile.file.fileName,
-          mimeType: messagefile.file.mimeType,
-          fileSize: messagefile.file.fileSize,
-          thumbnailUrl: messagefile.file.thumbnailUrl,
-        })),
-    reactions: isDeleted
-      ? []
-      : buildReactionDto(message.reactions ?? [], currentUserId),
-    thread: buildThreadMeta(message, options),
+    files: isDeleted ? [] : mapFiles(message),
+    reactions: isDeleted ? [] : buildReactionDto(message.reactions ?? [], currentUserId),
     isPinned: options?.pinnedMessageIds?.has(message.id) ?? false,
     isSaved: options?.savedMessageIds?.has(message.id) ?? false,
     linkPreview: message.linkPreview
@@ -79,23 +73,53 @@ function buildReactionDto(
   }));
 }
 
+function buildReply(
+  message: ChannelMessage | DmMessage,
+) {
+  if (!message.replyTo) return undefined;
+
+  const r = message.replyTo;
+
+  return {
+    id: r.id,
+    content: r.isDeleted ? '삭제된 메시지입니다.' : r.content ?? undefined,
+    sender: {
+      id: r.senderId,
+      name: r.senderName,
+      avatar: r.senderAvatar,
+    },
+    isDeleted: r.isDeleted,
+  };
+}
+
+function mapFiles(message: ChannelMessage | DmMessage): MessageFileDto[] {
+  return (message.files ?? []).map(mf => ({
+    id: mf.file.id,
+    fileUrl: mf.file.fileUrl,
+    fileName: mf.file.fileName,
+    mimeType: mf.file.mimeType,
+    fileSize: mf.file.fileSize,
+    thumbnailUrl: mf.file.thumbnailUrl,
+  }));
+}
+
+function isChannelMessage(
+  message: ChannelMessage | DmMessage,
+): message is ChannelMessage {
+  return (message as ChannelMessage).channel !== undefined;
+}
+
 function buildThreadMeta(
   message: ChannelMessage | DmMessage,
   options?: { threadUnreadCount?: number },
 ): MessageThreadDto | undefined {
-  // 스레드 답장에는 thread 정보 없음
-  if (message.parentMessage) return undefined;
-
-  // DM은 thread 없음 (정책)
-  if ('room' in message) return undefined;
-
-  if (!message.replyCount || message.replyCount === 0) {
-    return undefined;
-  }
+  if (!isChannelMessage(message)) return undefined;
+  if (message.threadParent) return undefined;
+  if (!message.threadCount) return undefined;
 
   return {
-    replyCount: message.replyCount,
+    count: message.threadCount,
     unreadCount: options?.threadUnreadCount ?? 0,
-    lastReplyAt: message.lastReplyAt ?? undefined,
+    lastMessageAt: message.lastThreadAt ?? undefined,
   };
 }

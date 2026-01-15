@@ -117,8 +117,6 @@ export class AuthController {
 
   @ApiOperation({ summary: '로그인'})
   @ApiOkResponse({ type: AuthResponseDto })
-  @ApiBearerAuth('access-token')
-  @UseGuards(AuthGuard('jwt'))
   @Post('sign-in')
   async signIn (
     @Body() signInDto: SignInDto,
@@ -127,6 +125,8 @@ export class AuthController {
     return this.authService.signIn(signInDto, origin);
   }
 
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '로그아웃'})
   @ApiOkResponse({
     schema: {

@@ -12,7 +12,7 @@ export class ThreadRead {
   user: User;
 
   @ManyToOne(() => ChannelMessage, { onDelete: 'CASCADE' })
-  parentMessage: ChannelMessage;
+  threadParent: ChannelMessage;
 
   @Column({ type: 'timestamp' })
   lastReadAt: Date;

@@ -2,6 +2,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UnreadCountDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'channel-or-dm-id' })
   id: string;
 }

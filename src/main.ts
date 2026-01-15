@@ -7,13 +7,12 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
 import * as basicAuth from 'express-basic-auth'
-// Module
 import { AppModule } from './app.module';
-// Utils
 import { runMigrationsIfNeeded } from './database/run-migrations';
 import { AppConfigService } from './config/app/config.service';
 import { RedisConfigService } from './config/redis/config.service';
 import { RedisIoAdapter } from './config/redis/socket-redis.adapter';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 
 async function bootstrap() {
   // Migration 선 실행 후 
@@ -26,7 +25,11 @@ async function bootstrap() {
   const redisConfig = app.get(RedisConfigService);
   const redisIoAdapter = new RedisIoAdapter(app, redisConfig);
 
+
   await redisIoAdapter.connectToRedis();
+
+  app.useWebSocketAdapter(new IoAdapter(app));
+
   app.useWebSocketAdapter(redisIoAdapter);
 
   app.use(cookieParser());
@@ -40,9 +43,15 @@ async function bootstrap() {
   );
 
   // CORS 설정 - 배포용
+  // app.enableCors({
+  //   origin: appConfigService.frontendUrl.split(','), // 멀티 도메인 대응 가능
+  //   credentials: true,
+  // });
+
   app.enableCors({
-    origin: appConfigService.frontendUrl.split(','), // 멀티 도메인 대응 가능
-    credentials: true,
+    origin: '*',
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
   // Swagger 암호화 .env development시 개방형열람, 배포이후 production으로 설정시 암호화열람

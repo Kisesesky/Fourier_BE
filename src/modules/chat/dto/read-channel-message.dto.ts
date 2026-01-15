@@ -2,6 +2,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ReadChannelMessageDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'channel-uuid' })
   channelId: string;
 }

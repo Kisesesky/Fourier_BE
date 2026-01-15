@@ -201,13 +201,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     body: WsEditMessageDto,
   ) {
     const user = await this.chatService.getUserBySocket(client);
-    const message = await this.chatService.editMessage(user, body.messageId, body.content);
-    const scoped = await this.chatService.findScopedMessageById(message.id);
+    const updated = await this.chatService.editMessage(user, body.messageId, body.content);
+    const scoped = await this.chatService.findScopedMessageById(updated.id);
 
     this.emitMessageEvent(
       this.resolveMessageRoom(scoped),
       'updated',
-      mapMessageToResponse(message, user.id),
+      mapMessageToResponse(updated, user.id),
     );
   }
 
@@ -217,13 +217,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     body: WsDeleteMessageDto,
   ) {
     const user = await this.chatService.getUserBySocket(client);
-    const message = await this.chatService.deleteMessage(user, body.messageId);
-    const scoped = await this.chatService.findScopedMessageById(message.id);
+    const deleted = await this.chatService.deleteMessage(user, body.messageId);
+    const scoped = await this.chatService.findScopedMessageById(deleted.id);
 
     this.emitMessageEvent(
       this.resolveMessageRoom(scoped),
       'deleted',
-      { messageId: message.id },
+      { messageId: deleted.id },
     );
   }
 
@@ -241,7 +241,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.resolveMessageRoom(scoped),
       'reaction',
       {
-        messageId: body.messageId,
+        messageId: scoped.message.id,
         emoji: body.emoji,
         userId: user.id,
         action: result.action,
@@ -255,14 +255,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() body: SendThreadMessageDto,
   ) {
     const user = await this.chatService.getUserBySocket(client);
-    const scoped = await this.chatService.findScopedMessageById(body.parentMessageId);
+    const scoped = await this.chatService.findScopedMessageById(body.threadParentId);
 
     if (scoped.scope !== 'CHANNEL') {
       throw new ForbiddenException('DM에는 스레드를 사용할 수 없습니다.');
     }
 
     const parent = scoped.message as ChannelMessage;
-    const reply = await this.chatService.sendThreadMessage(user, body.parentMessageId, body.content, body.fileIds);
+    const reply = await this.chatService.sendThreadMessage(user, body.threadParentId, body.content, body.fileIds);
+    const refreshedParent = await this.chatService.findScopedMessageById(parent.id);
+    const unreadCount = await this.chatService.getThreadUnreadCount(parent.id, user.id);
     const room = `channel:${parent.channel.id}`;
 
     this.emitMessageEvent(room, 'thread_created', {
@@ -270,17 +272,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       message: mapMessageToResponse(reply, user.id),
     });
 
-    const unreadCount = await this.chatService.getThreadUnreadCount(
-      parent.id,
-      user.id,
-    );
-
     this.emitMessageEvent(room, 'thread_meta', {
       parentMessageId: parent.id,
       thread: {
-        replyCount: parent.replyCount,
+        replyCount: (refreshedParent.message as ChannelMessage).threadCount,
         unreadCount,
-        lastReplyAt: parent.lastReplyAt,
+        lastReplyAt: (refreshedParent.message as ChannelMessage).lastThreadAt,
       },
     });
   }
@@ -288,20 +285,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('thread.open')
   async handleThreadOpen(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { parentMessageId: string },
+    @MessageBody() body: { threadParentId: string },
   ) {
     const user = await this.chatService.getUserBySocket(client);
 
     const viewers =
-      this.threadViewers.get(body.parentMessageId) ?? new Set<string>();
+      this.threadViewers.get(body.threadParentId) ?? new Set<string>();
 
     viewers.add(user.id);
-    this.threadViewers.set(body.parentMessageId, viewers);
+    this.threadViewers.set(body.threadParentId, viewers);
 
-    await this.chatService.markThreadRead(user, body.parentMessageId);
+    await this.chatService.markThreadRead(user, body.threadParentId);
 
     this.server.emit('thread.viewers.updated', {
-      parentMessageId: body.parentMessageId,
+      threadParentId: body.threadParentId,
       viewers: Array.from(viewers),
       count: viewers.size,
     });
@@ -310,21 +307,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('thread.close')
   async handleThreadClose(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { parentMessageId: string },
+    @MessageBody() body: { threadParentId: string },
   ) {
     const user = await this.chatService.getUserBySocket(client);
 
-    const viewers = this.threadViewers.get(body.parentMessageId);
+    const viewers = this.threadViewers.get(body.threadParentId);
     if (!viewers) return;
 
     viewers.delete(user.id);
 
     if (viewers.size === 0) {
-      this.threadViewers.delete(body.parentMessageId);
+      this.threadViewers.delete(body.threadParentId);
     }
 
     this.server.emit('thread.viewers.updated', {
-      parentMessageId: body.parentMessageId,
+      threadParentId: body.threadParentId,
       viewers: Array.from(viewers),
       count: viewers.size,
     });
@@ -333,11 +330,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('thread.typing')
   async handleThreadTyping(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { parentMessageId: string; isTyping: boolean },
+    @MessageBody() body: { threadParentId: string; isTyping: boolean },
   ) {
     const user = await this.chatService.getUserBySocket(client);
 
-    const viewers = this.threadViewers.get(body.parentMessageId);
+    const viewers = this.threadViewers.get(body.threadParentId);
     if (!viewers) return;
 
     for (const viewerId of viewers) {
@@ -345,7 +342,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (!socketId || viewerId === user.id) continue;
 
       this.server.to(socketId).emit('thread.user.typing', {
-        parentMessageId: body.parentMessageId,
+        threadParentId: body.threadParentId,
         userId: user.id,
         isTyping: body.isTyping,
       });

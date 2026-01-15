@@ -18,6 +18,15 @@ export class ChannelMessage {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   sender: User;
 
+  @Column()
+  senderId: string;
+
+  @Column()
+  senderName: string;
+
+  @Column({ nullable: true })
+  senderAvatar?: string;
+
   @Column({ type: 'enum', enum: MessageType, default: MessageType.TEXT })
   type: MessageType;
 
@@ -36,17 +45,17 @@ export class ChannelMessage {
   @Column({ default: false })
   isDeleted: boolean;
 
-  @ManyToOne(() => ChannelMessage, (message) => message.replies, { nullable: true, onDelete: 'CASCADE' })
-  parentMessage?: ChannelMessage;
+  @ManyToOne(() => ChannelMessage, (message) => message.threadMessages, { nullable: true, onDelete: 'CASCADE' })
+  threadParent?: ChannelMessage;
 
-  @OneToMany(() => ChannelMessage, (message) => message.parentMessage)
-  replies: ChannelMessage[];
+  @OneToMany(() => ChannelMessage, (message) => message.threadParent)
+  threadMessages: ChannelMessage[];
 
   @Column({ default: 0 })
-  replyCount: number;
+  threadCount: number;
 
   @Column({ type: 'timestamp', nullable: true })
-  lastReplyAt?: Date;
+  lastThreadAt?: Date;
 
   @OneToMany(() => MessageReaction, (reaction) => reaction.channelMessage)
   reactions: MessageReaction[];

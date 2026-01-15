@@ -52,13 +52,13 @@ export class ProjectsService {
     await this.projectRepository.save(project);
 
     // 3. 생성자는 자동 OWNER
-    await this.projectMemberRepository.save(
-      this.projectMemberRepository.create({
-        project,
-        user,
-        role: ProjectRole.OWNER,
-      }),
-    );
+    const ownerMember = await this.projectMemberRepository.create({
+      project,
+      user,
+      role: ProjectRole.OWNER,
+    });
+
+    await this.projectMemberRepository.save(ownerMember);
 
     // 4. 선택된 유저들 자동 추가 (팀 멤버만)
     const teamMembers =
@@ -68,17 +68,9 @@ export class ProjectsService {
           })
         : [];
     
-    const ownerMember = await this.projectMemberRepository.save(
-      this.projectMemberRepository.create({
-        project,
-        user,
-        role: ProjectRole.OWNER,
-      }),
-    );
-
-    const projectMembers = [ownerMember, ...teamMembers.map(tm => ({
+    const projectMembers = [ownerMember, ...teamMembers.map(teammember => ({
       project,
-      user: tm.user,
+      user: teammember.user,
       role: ProjectRole.MEMBER,
     }))];
 
