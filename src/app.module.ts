@@ -3,7 +3,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
-import { IssuesModule } from './modules/issues/issues.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { DocsModule } from './modules/docs/docs.module';
 import { MembersModule } from './modules/members/members.module';
@@ -19,6 +18,7 @@ import { TeamModule } from './modules/team/team.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { FilesModule } from './modules/files/files.module';
+import { IssuesModule } from './modules/issues/issues.module';
 
 @Module({
   imports: [
