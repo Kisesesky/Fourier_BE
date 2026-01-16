@@ -2,7 +2,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { Project } from 'src/modules/projects/entities/project.entity';
 import { User } from 'src/modules/users/entities/user.entity';
-import { CalendarCategory } from '../constants/calendar-category.enum';
+import { CalendarCategory } from './calendar-category.entity';
 
 @Entity()
 export class CalendarEvent {
@@ -18,7 +18,7 @@ export class CalendarEvent {
   @Column()
   title: string;
 
-  @Column({ type: 'enum', enum: CalendarCategory, default: CalendarCategory.PERSONAL })
+  @ManyToOne(() => CalendarCategory, { eager: true })
   category: CalendarCategory;
 
   @Column({ type: 'timestamp' })
@@ -32,6 +32,12 @@ export class CalendarEvent {
 
   @Column({ nullable: true, type: 'text' })
   memo?: string;
+
+  @Column({ nullable: true })
+  linkedIssueId?: string;
+
+  @Column({ default: 'manual' })
+  sourceType: 'manual' | 'issue';
 
   @CreateDateColumn()
   createdAt: Date;

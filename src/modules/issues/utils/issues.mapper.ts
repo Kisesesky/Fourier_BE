@@ -1,8 +1,8 @@
-// src/modules/issue/issue.mapper.ts
-import { Issue } from './entities/issue.entity';
-import { IssueResponseDto } from './dto/issue-response.dto';
+// src/modules/issue/utils/issue.mapper.ts
+import { Issue } from '../entities/issue.entity';
+import { IssueResponseDto } from '../dto/issue-response.dto';
 
-export function mapIssueToResponse(issue: Issue): IssueResponseDto {
+export function mapIssuesToResponse(issue: Issue): IssueResponseDto {
   return {
     id: issue.id,
     title: issue.title,
@@ -21,7 +21,7 @@ export function mapIssueToResponse(issue: Issue): IssueResponseDto {
           name: issue.assignee.displayName ?? issue.assignee.name,
         }
       : undefined,
-    subtasks: issue.subtasks?.map(mapIssueToResponse) ?? [],
+    subtasks: issue.subtasks?.map(mapIssuesToResponse) ?? [],
     comments:
       issue.comments?.map((c) => ({
         id: c.id,

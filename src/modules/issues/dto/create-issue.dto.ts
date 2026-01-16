@@ -37,4 +37,9 @@ export class CreateIssueDto {
   @IsOptional()
   @IsUUID()
   parentId?: string; // 상위 업무가 있다면
+
+  @ApiPropertyOptional({ example: '' })
+  @IsOptional()
+  @IsDateString()
+  dueAt?: string | null;
 }

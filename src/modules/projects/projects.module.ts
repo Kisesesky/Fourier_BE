@@ -14,10 +14,11 @@ import { ChannelMember } from '../chat/entities/channel-member.entity';
 import { CalendarModule } from '../calendar/calendar.module';
 import { DocsModule } from '../docs/docs.module';
 import { IssuesModule } from '../issues/issues.module';
+import { CalendarCategory } from '../calendar/entities/calendar-category.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, ProjectMember, TeamMember, Issue, Channel, ChannelMember]),
+    TypeOrmModule.forFeature([Project, ProjectMember, TeamMember, Issue, Channel, ChannelMember, CalendarCategory]),
     CalendarModule,
     DocsModule,
     IssuesModule,

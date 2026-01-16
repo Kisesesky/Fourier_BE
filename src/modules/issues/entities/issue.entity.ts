@@ -43,6 +43,12 @@ export class Issue {
   @OneToMany(() => IssueComment, (comment) => comment.issue)
   comments: IssueComment[];
 
+  @Column({ type: 'timestamp', nullable: true })
+  dueAt?: Date;
+
+  @Column({ nullable: true })
+  calendarEventId?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -1,11 +1,11 @@
 // src/modules/issue/issue.gateway.ts
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { IssuesService } from './issues.service';
-import { WsUpdateProgressDto } from './dto/ws-update-progress.dto';
-import { WsUpdateStatusDto } from './dto/ws-update-status.dto';
-import { WsAddSubtaskDto } from './dto/ws-add-subtask.dto';
-import { WsRemoveSubtaskDto } from './dto/ws-remove-subtask.dto';
+import { IssuesService } from '../issues.service';
+import { WsUpdateProgressDto } from '../dto/ws-update-progress.dto';
+import { WsUpdateStatusDto } from '../dto/ws-update-status.dto';
+import { WsAddSubtaskDto } from '../dto/ws-add-subtask.dto';
+import { WsRemoveSubtaskDto } from '../dto/ws-remove-subtask.dto';
 
 @WebSocketGateway({ namespace: '/issue', cors: { origin: true } })
 export class IssuesGateway implements OnGatewayConnection, OnGatewayDisconnect {

@@ -9,9 +9,11 @@ import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { IssueComment } from './entities/issue-comment.entity';
 import { IssueResponseDto } from './dto/issue-response.dto';
-import { mapIssueToResponse } from './issue.mapper';
+import { mapIssuesToResponse } from './utils/issues.mapper';
 import { IssueStatus } from './constants/issue-status.enum';
 import { AddSubtaskDto } from './dto/add-subtask.dto';
+import { CalendarService } from '../calendar/calendar.service';
+import { syncCalendarEvent } from './utils/sync-calendar-event';
 
 @Injectable()
 export class IssuesService {
@@ -24,11 +26,15 @@ export class IssuesService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(IssueComment)
     private readonly issueCommentRepository: Repository<IssueComment>,
+    private readonly calendarService: CalendarService,
 
   ) {}
 
   /** 상태 변경 (Kanban 보드용) */
-  async changeStatus(issueId: string, status: IssueStatus) {
+  async changeStatus(
+    issueId: string,
+    status: IssueStatus,
+  ) {
     const issue = await this.issueRepository.findOne({ where: { id: issueId } });
     if (!issue) {
       throw new NotFoundException('이슈 없음');
@@ -39,31 +45,22 @@ export class IssuesService {
   }
 
   /** 프로젝트별 Kanban 보드 조회 */
-  async getProjectBoard(projectId: string) {
+  async getProjectBoard(
+    projectId: string,
+  ) {
     const issues = await this.issueRepository.find({
-      where: { project: { id: projectId } },
-      relations: ['assignee', 'subtasks'],
+      where: { project: { id: projectId }, parent: null },
+      relations: ['assignee', 'creator', 'comments', 'comments.author', 'subtasks'],
       order: { createdAt: 'ASC' },
     });
 
-    // 상태별 그룹핑 + 배열 반환
-    return Object.values(IssueStatus).map(status => ({
-      status,
-      issues: issues
-        .filter(i => i.status === status)
-        .map(i => ({
-          id: i.id,
-          title: i.title,
-          assigneeId: i.assignee?.id,
-          progress: i.progress,
-          startAt: i.startAt,
-          endAt: i.endAt,
-        })),
-    }));
+    return issues.map(mapIssuesToResponse);
   }
 
   /** 프로젝트 대시보드 통계 */
-  async getProjectDashboard(projectId: string) {
+  async getProjectDashboard(
+    projectId: string,
+  ) {
     const issues = await this.issueRepository.find({
       where: { project: { id: projectId } },
       relations: ['assignee'],
@@ -112,52 +109,74 @@ export class IssuesService {
   }
 
   /** 이슈 생성 */
-  async createIssue(projectId: string, createIssueDto: CreateIssueDto, creator: User): Promise<IssueResponseDto> {
+  async createIssue(
+    projectId: string,
+    createIssueDto: CreateIssueDto,
+    creator: User,
+  ): Promise<IssueResponseDto> {
     const project = await this.projectRepository.findOne({ where: { id: projectId } });
     if (!project) {
       throw new NotFoundException('프로젝트 없음');
     }
 
-    const parent = createIssueDto.parentId ? await this.issueRepository.findOne({ where: { id: createIssueDto.parentId } }) : null;
+    const parent = createIssueDto.parentId
+      ? await this.issueRepository.findOne({ where: { id: createIssueDto.parentId } })
+      : null;
+
     if (createIssueDto.parentId && !parent) {
       throw new NotFoundException('상위 업무 없음');
     }
 
-    const assignee = createIssueDto.assigneeId ? await this.userRepository.findOne({ where: { id: createIssueDto.assigneeId } }) : null;
+    const assignee = createIssueDto.assigneeId
+      ? await this.userRepository.findOne({ where: { id: createIssueDto.assigneeId } })
+      : null;
     
     const issue = this.issueRepository.create({
       ...createIssueDto,
       project,
       creator,
-      parent,
-      assignee,
-      status: createIssueDto.status ?? IssueStatus.PLANNED,
       progress: createIssueDto.progress ?? 0,
       startAt: createIssueDto.startAt ? new Date(createIssueDto.startAt) : null,
       endAt: createIssueDto.endAt ? new Date(createIssueDto.endAt) : null,
     });
 
+
     const saved = await this.issueRepository.save(issue);
-    return mapIssueToResponse(saved);
+    return mapIssuesToResponse(saved);
   }
 
   /** 이슈 수정 */
-  async updateIssue(issueId: string, updateIssueDto: UpdateIssueDto) {
-    const issue = await this.issueRepository.findOne({ where: { id: issueId }, relations: ['assignee', 'subtasks'] });
+  async updateIssue(
+    issueId: string,
+    updateIssueDto: UpdateIssueDto,
+  ) {
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['assignee'],
+    });
+
     if (!issue) {
       throw new NotFoundException('이슈 없음');
     }
 
-    if (updateIssueDto.assigneeId) {
-      issue.assignee = await this.userRepository.findOne({ where: { id: updateIssueDto.assigneeId } });
-    }
-    Object.assign(issue, updateIssueDto);
+    Object.assign(issue, {
+      ...updateIssueDto,
+      startAt: updateIssueDto.startAt ? new Date(updateIssueDto.startAt) : issue.startAt,
+      endAt: updateIssueDto.endAt ? new Date(updateIssueDto.endAt) : issue.endAt,
+    });
+    const savedIssue = await this.issueRepository.save(issue);
 
-    return mapIssueToResponse(await this.issueRepository.save(issue));
+    // 캘린더 이벤트 연동
+    await syncCalendarEvent(savedIssue, this.calendarService);
+
+    return mapIssuesToResponse(savedIssue);
   }
 
   /** 담당자 지정 */
-  async assignIssue(issueId: string, userId: string) {
+  async assignIssue(
+    issueId: string,
+    userId: string,
+  ) {
     const issue = await this.issueRepository.findOne({ where: { id: issueId } });
     if (!issue) {
       throw new NotFoundException('이슈 없음');
@@ -169,11 +188,13 @@ export class IssuesService {
     }
 
     issue.assignee = user;
-    return mapIssueToResponse(await this.issueRepository.save(issue));
+    return mapIssuesToResponse(await this.issueRepository.save(issue));
   }
 
   /** 프로젝트 내 모든 이슈 조회 */
-  async getProjectIssues(projectId: string): Promise<IssueResponseDto[]> {
+  async getProjectIssues(
+    projectId: string,
+  ): Promise<IssueResponseDto[]> {
     const issues = await this.issueRepository.find({
       where: { project: { id: projectId }, parent: null },
       relations: [
@@ -187,11 +208,13 @@ export class IssuesService {
       order: { createdAt: 'ASC' },
     });
 
-    return issues.map(mapIssueToResponse);
+    return issues.map(mapIssuesToResponse);
   }
 
   /** 하위 업무 추가 */
-  async addSubtask(addSubtaskDto: AddSubtaskDto) {
+  async addSubtask(
+    addSubtaskDto: AddSubtaskDto,
+  ) {
     const parent = await this.issueRepository.findOne({
       where: { id: addSubtaskDto.parentId },
       relations: ['subtasks']
@@ -215,7 +238,11 @@ export class IssuesService {
   }
 
   /** 커멘트 추가 */
-  async addComment(issueId: string, user: User, content: string) {
+  async addComment(
+    issueId: string,
+    user: User,
+    content: string,
+  ) {
     const issue = await this.issueRepository.findOne({ where: { id: issueId } });
     if (!issue) {
       throw new NotFoundException('이슈 없음');
@@ -226,7 +253,9 @@ export class IssuesService {
   }
 
   /** 하위 업무 삭제 */
-  async removeSubtask(subtaskId: string) {
+  async removeSubtask(
+    subtaskId: string,
+  ) {
     const subtask = await this.issueRepository.findOne({
       where: { id: subtaskId },
       relations: ['parent']
@@ -245,7 +274,10 @@ export class IssuesService {
   }
 
   /** 진행률 업데이트 */
-  async updateProgress(issueId: string, data: { progress: number }) {
+  async updateProgress(
+    issueId: string,
+    data: { progress: number },
+  ) {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
       relations: ['parent']
@@ -265,7 +297,9 @@ export class IssuesService {
   }
 
   /** 상위 업무 진행률 재계산 */
-  async recalculateParentProgress(parent: Issue) {
+  async recalculateParentProgress(
+    parent: Issue,
+  ) {
     const subtasks = await this.issueRepository.find({ where: { parent: { id: parent.id } } });
     if (!subtasks.length) return;
 
@@ -279,7 +313,10 @@ export class IssuesService {
   }
 
   /** 상태 업데이트 */
-  async updateStatus(issueId: string, status: IssueStatus) {
+  async updateStatus(
+    issueId: string,
+    status: IssueStatus,
+  ) {
     const issue = await this.issueRepository.findOne({ where: { id: issueId } });
     if (!issue) {
       throw new NotFoundException('이슈 없음');

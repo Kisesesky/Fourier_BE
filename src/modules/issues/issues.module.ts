@@ -6,11 +6,13 @@ import { Issue } from './entities/issue.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IssueComment } from './entities/issue-comment.entity';
 import { User } from '../users/entities/user.entity';
-import { IssuesGateway } from './issue.gateway';
+import { IssuesGateway } from './gateways/issues.gateway';
+import { CalendarModule } from '../calendar/calendar.module';
 
 @Module({
   imports:[
     TypeOrmModule.forFeature([Project, Issue, IssueComment, User]),
+    CalendarModule,
   ],
   controllers: [IssuesController],
   providers: [IssuesService, IssuesGateway],

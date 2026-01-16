@@ -12,10 +12,10 @@ import { ProjectRole } from './constants/project-role.enum';
 import { Channel } from '../chat/entities/channel.entity';
 import { ChannelMember } from '../chat/entities/channel-member.entity';
 import { CalendarService } from '../calendar/calendar.service';
-import { CalendarCategory } from '../calendar/constants/calendar-category.enum';
 import { DocsService } from '../docs/docs.service';
 import { IssuesService } from '../issues/issues.service';
 import { IssueStatus } from '../issues/constants/issue-status.enum';
+import { CalendarCategory } from '../calendar/entities/calendar-category.entity';
 
 @Injectable()
 export class ProjectsService {
@@ -30,6 +30,8 @@ export class ProjectsService {
     private readonly channelRepository: Repository<Channel>,
     @InjectRepository(ChannelMember)
     private readonly channelMemberRepository: Repository<ChannelMember>,
+    @InjectRepository(CalendarCategory)
+    private readonly calendarCategoryRepository: Repository<CalendarCategory>,
     private readonly calendarService: CalendarService,
     private readonly docsService: DocsService,
     private readonly issuesService: IssuesService,
@@ -123,12 +125,27 @@ export class ProjectsService {
     // 7. 캘린더 기본 이벤트 생성
     const start = new Date();
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1시간 기본
+    const defaultCategories = [
+      { name: '일정', color: '#3788d8', isDefault: true },
+      { name: '회의', color: '#2ecc71' },
+      { name: '마감', color: '#e74c3c' },
+      { name: '개인', color: '#9b59b6' },
+    ];
+
+    const savedCategories = await this.calendarCategoryRepository.save(
+      defaultCategories.map(c => ({
+        ...c,
+        project,
+      }))
+    );
+
+    const defaultCategory = savedCategories.find(c => c.isDefault);
 
     await this.calendarService.createEvent(project.id, {
       title: '프로젝트 시작',
-      category: CalendarCategory.TEAM,
-      startAt: start,
-      endAt: end,
+      categoryId: defaultCategory.id,
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
     }, user);
 
     // 8. Docs 루트 폴더/문서 생성

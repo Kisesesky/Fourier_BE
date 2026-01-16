@@ -51,7 +51,8 @@ async function bootstrap() {
   app.enableCors({
     origin: '*',
     allowedHeaders: ['Authorization', 'Content-Type'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
   });
 
   // Swagger 암호화 .env development시 개방형열람, 배포이후 production으로 설정시 암호화열람

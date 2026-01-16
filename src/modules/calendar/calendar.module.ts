@@ -6,10 +6,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CalendarEvent } from './entities/calendar-event.entity';
 import { ProjectsModule } from '../projects/projects.module';
 import { ProjectMember } from '../projects/entities/project-member.entity';
+import { CalendarCategory } from './entities/calendar-category.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CalendarEvent, ProjectMember]),
+    TypeOrmModule.forFeature([CalendarEvent, CalendarCategory, ProjectMember]),
   ],
   providers: [CalendarService],
   controllers: [CalendarController],

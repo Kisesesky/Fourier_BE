@@ -1,6 +1,6 @@
 // src/modules/calendar/dto/calendar-event-response.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { CalendarCategory } from '../constants/calendar-category.enum';
+import { CalendarCategoryResponseDto } from './calendar-category-response.dto';
 
 export class CalendarEventResponseDto {
   @ApiProperty({ example: 'event-uuid' })
@@ -9,8 +9,8 @@ export class CalendarEventResponseDto {
   @ApiProperty({ example: '스프린트 회의' })
   title: string;
 
-  @ApiProperty({ enum: CalendarCategory })
-  category: CalendarCategory;
+  @ApiProperty({ example: '회의' })
+  category: CalendarCategoryResponseDto;
 
   @ApiProperty({ example: '2025-01-10T10:00:00.000Z' })
   startAt: Date;

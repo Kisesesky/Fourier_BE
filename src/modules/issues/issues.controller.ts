@@ -18,7 +18,7 @@ import { AddSubtaskDto } from './dto/add-subtask.dto';
 @ApiTags('issues')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('access-token')
-@Controller('project/:projectId/issue')
+@Controller('projects/:projectId/issues')
 export class IssuesController {
   constructor(
     private readonly issuesService: IssuesService
