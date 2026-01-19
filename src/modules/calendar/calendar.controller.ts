@@ -96,4 +96,17 @@ export class CalendarController {
   ) {
     return this.calendarService.deleteCategory(categoryId, user);
   }
+
+  @ApiOperation({ summary: '캘린더 수정' })
+  @Patch('events/:eventId/issue-dates')
+  async updateIssueDatesFromCalendar(
+    @Param('eventId') eventId: string,
+    @Body() body: { startAt: string; endAt: string }
+  ) {
+    return this.calendarService.updateIssueDatesFromCalendar(
+      eventId,
+      body.startAt,
+      body.endAt,
+    );
+  }
 }

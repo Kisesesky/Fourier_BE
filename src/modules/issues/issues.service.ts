@@ -14,6 +14,13 @@ import { IssueStatus } from './constants/issue-status.enum';
 import { AddSubtaskDto } from './dto/add-subtask.dto';
 import { CalendarService } from '../calendar/calendar.service';
 import { syncCalendarEvent } from './utils/sync-calendar-event';
+import { GanttIssueDto } from './dto/gantt-issue.dto';
+import { ISSUE_STATUS_COLOR } from './constants/issue-color-map';
+import { ActivityLogService } from '../activity-log/activity-log.service';
+import { snapshot } from './utils/snapshot';
+import { ActivityTargetType } from '../activity-log/constants/activity-target-type.enum';
+import { IssueActivityAction } from './constants/issue-activity-action.enum';
+import { CalendarActivityAction } from '../calendar/constants/calendar-activity-action.enum';
 
 @Injectable()
 export class IssuesService {
@@ -27,22 +34,8 @@ export class IssuesService {
     @InjectRepository(IssueComment)
     private readonly issueCommentRepository: Repository<IssueComment>,
     private readonly calendarService: CalendarService,
-
+    private readonly activityLogService: ActivityLogService,
   ) {}
-
-  /** 상태 변경 (Kanban 보드용) */
-  async changeStatus(
-    issueId: string,
-    status: IssueStatus,
-  ) {
-    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
-    if (!issue) {
-      throw new NotFoundException('이슈 없음');
-    }
-
-    issue.status = status;
-    return this.issueRepository.save(issue);
-  }
 
   /** 프로젝트별 Kanban 보드 조회 */
   async getProjectBoard(
@@ -66,7 +59,6 @@ export class IssuesService {
       relations: ['assignee'],
     });
 
-    const totalIssues = issues.length;
     const statusCount: Record<string, number> = {};
     Object.values(IssueStatus).forEach(s => (statusCount[s] = 0));
 
@@ -92,7 +84,7 @@ export class IssuesService {
       }
     }
 
-    const avgProgress = totalIssues > 0 ? Math.floor(totalProgress / totalIssues) : 0;
+    const avgProgress = issues.length > 0 ? Math.floor(totalProgress / issues.length) : 0;
     const assigneeStatsArray = Object.entries(assigneeStats).map(([userId, stat]) => ({
       userId,
       issueCount: stat.issueCount,
@@ -100,7 +92,7 @@ export class IssuesService {
     }));
 
     return {
-      totalIssues,
+      totalIssues: issues.length,
       statusCount,
       avgProgress,
       assigneeStats: assigneeStatsArray,
@@ -112,11 +104,14 @@ export class IssuesService {
   async createIssue(
     projectId: string,
     createIssueDto: CreateIssueDto,
-    creator: User,
+    user: User,
   ): Promise<IssueResponseDto> {
-    const project = await this.projectRepository.findOne({ where: { id: projectId } });
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['team'],
+    });
     if (!project) {
-      throw new NotFoundException('프로젝트 없음');
+      throw new NotFoundException('프로젝트가 없습니다.');
     }
 
     const parent = createIssueDto.parentId
@@ -124,7 +119,7 @@ export class IssuesService {
       : null;
 
     if (createIssueDto.parentId && !parent) {
-      throw new NotFoundException('상위 업무 없음');
+      throw new NotFoundException('상위 업무가 없습니다.');
     }
 
     const assignee = createIssueDto.assigneeId
@@ -134,7 +129,10 @@ export class IssuesService {
     const issue = this.issueRepository.create({
       ...createIssueDto,
       project,
-      creator,
+      creator: user,
+      parent,
+      assignee,
+      status: createIssueDto.status ?? IssueStatus.PLANNED,
       progress: createIssueDto.progress ?? 0,
       startAt: createIssueDto.startAt ? new Date(createIssueDto.startAt) : null,
       endAt: createIssueDto.endAt ? new Date(createIssueDto.endAt) : null,
@@ -142,6 +140,20 @@ export class IssuesService {
 
 
     const saved = await this.issueRepository.save(issue);
+    await syncCalendarEvent(saved, this.calendarService, this.issueRepository);
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: project.id,
+      teamId: project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: saved.id,
+      action: IssueActivityAction.CREATED,
+      payload: {
+        after: snapshot(saved),
+      },
+    });
+
     return mapIssuesToResponse(saved);
   }
 
@@ -149,46 +161,142 @@ export class IssuesService {
   async updateIssue(
     issueId: string,
     updateIssueDto: UpdateIssueDto,
+    user: User,
   ) {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
-      relations: ['assignee'],
+      relations: ['assignee', 'project', 'project.team']
     });
 
     if (!issue) {
-      throw new NotFoundException('이슈 없음');
+      throw new NotFoundException('해당 이슈가 없습니다.');
     }
 
+    const before = snapshot(issue);
     Object.assign(issue, {
       ...updateIssueDto,
       startAt: updateIssueDto.startAt ? new Date(updateIssueDto.startAt) : issue.startAt,
       endAt: updateIssueDto.endAt ? new Date(updateIssueDto.endAt) : issue.endAt,
     });
-    const savedIssue = await this.issueRepository.save(issue);
 
-    // 캘린더 이벤트 연동
-    await syncCalendarEvent(savedIssue, this.calendarService);
+    const saved = await this.issueRepository.save(issue);
+    const after = snapshot(saved);
 
-    return mapIssuesToResponse(savedIssue);
+    const isDateChanged =
+      before.startAt?.getTime() !== after.startAt?.getTime() ||
+      before.endAt?.getTime() !== after.endAt?.getTime();
+
+    if (isDateChanged) {
+      await syncCalendarEvent(saved, this.calendarService, this.issueRepository);
+
+      await this.activityLogService.log({
+        actorId: user.id,
+        projectId: saved.project.id,
+        teamId: saved.project.team.id,
+        targetType: ActivityTargetType.CALENDAR,
+        targetId: saved.calendarEventId!,
+        action: CalendarActivityAction.MOVED,
+        payload: {
+          before: {
+            startAt: before.startAt,
+            endAt: before.endAt,
+          },
+          after: {
+            startAt: after.startAt,
+            endAt: after.endAt,
+          },
+          meta: {
+            issueId: saved.id,
+          },
+        },
+      });
+    }
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: saved.project.id,
+      teamId: saved.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: saved.id,
+      action: IssueActivityAction.UPDATED,
+      payload: { before, after },
+    });
+
+    return mapIssuesToResponse(saved);
+  }
+
+  async deleteIssue(
+    issueId: string,
+    user: User,
+  ) {
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['project', 'project.team'],
+    });
+    
+    if (!issue) {
+      throw new NotFoundException('해당 이슈가 없습니다.');
+    }
+
+    if (issue.calendarEventId) {
+      await this.calendarService.deleteEventByIssue(issue);
+    }
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: issue.project.id,
+      teamId: issue.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: issue.id,
+      action: IssueActivityAction.DELETED,
+      payload: {
+        before: snapshot(issue),
+      },
+    });
+
+    await this.issueRepository.remove(issue);
   }
 
   /** 담당자 지정 */
   async assignIssue(
     issueId: string,
     userId: string,
+    actor: User,
   ) {
-    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['assignee', 'project', 'project.team'],
+    });
     if (!issue) {
-      throw new NotFoundException('이슈 없음');
+      throw new NotFoundException('해당 이슈가 없습니다.');
     }
 
-    const user = await this.userRepository.findOne({ where: { id: userId }});
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
     if (!user) {
-      throw new NotFoundException('사용자 없음');
+      throw new NotFoundException('사용자가 없습니다.');
     }
 
+    const beforeAssigneeId = issue.assignee?.id ?? null;
     issue.assignee = user;
-    return mapIssuesToResponse(await this.issueRepository.save(issue));
+
+    const saved = await this.issueRepository.save(issue);
+
+    await this.activityLogService.log({
+      actorId: actor.id,
+      projectId: saved.project.id,
+      teamId: saved.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: saved.id,
+      action: IssueActivityAction.ASSIGNED,
+      payload: {
+        before: { assigneeId: beforeAssigneeId },
+        after: { assigneeId: user.id },
+      },
+    });
+
+    return mapIssuesToResponse(saved);
   }
 
   /** 프로젝트 내 모든 이슈 조회 */
@@ -214,13 +322,14 @@ export class IssuesService {
   /** 하위 업무 추가 */
   async addSubtask(
     addSubtaskDto: AddSubtaskDto,
+    actor: User,
   ) {
     const parent = await this.issueRepository.findOne({
       where: { id: addSubtaskDto.parentId },
-      relations: ['subtasks']
+      relations: ['subtasks', 'project', 'project.team'],
     });
     if (!parent) {
-      throw new NotFoundException('상위 업무 없음');
+      throw new NotFoundException('상위 업무가 없습니다.');
     }
 
     const assignee = addSubtaskDto.assigneeId ? { id: addSubtaskDto.assigneeId } : null;
@@ -233,6 +342,18 @@ export class IssuesService {
     });
 
     const saved = await this.issueRepository.save(subtask);
+    await this.activityLogService.log({
+      actorId: actor.id,
+      projectId: parent.project.id,
+      teamId: parent.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: parent.id,
+      action: IssueActivityAction.SUBTASK_ADDED,
+      payload: {
+        after: { subtaskId: subtask.id, title: subtask.title },
+      },
+    });
+
     await this.recalculateParentProgress(parent);
     return saved;
   }
@@ -243,32 +364,70 @@ export class IssuesService {
     user: User,
     content: string,
   ) {
-    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['project', 'project.team'],
+    });
     if (!issue) {
-      throw new NotFoundException('이슈 없음');
+      throw new NotFoundException('해당 이슈가 없습니다.');
     }
 
     const comment = this.issueCommentRepository.create({ issue, author: user, content });
-    return this.issueCommentRepository.save(comment);
+    const saved = await this.issueCommentRepository.save(comment);
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: issue.project.id,
+      teamId: issue.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: issue.id,
+      action: IssueActivityAction.COMMENTED,
+      payload: {
+        meta: {
+          commentId: saved.id,
+          preview: content.slice(0, 50),
+        },
+      },
+    });
+
+    return saved;
   }
 
   /** 하위 업무 삭제 */
   async removeSubtask(
     subtaskId: string,
+    user: User,
   ) {
     const subtask = await this.issueRepository.findOne({
       where: { id: subtaskId },
-      relations: ['parent']
+      relations: ['parent', 'parent.project', 'parent.project.team'],
     });
     if (!subtask) {
-      throw new NotFoundException('하위 업무 없음');
+      throw new NotFoundException('하위 업무가 없습니다.');
     }
 
     const parent = subtask.parent;
+    const payload = {
+      subtaskId: subtask.id,
+      title: subtask.title,
+    };
+
     await this.issueRepository.remove(subtask);
     if (parent) {
       await this.recalculateParentProgress(parent);
     }
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: parent.project.id,
+      teamId: parent.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: parent.id,
+      action: IssueActivityAction.SUBTASK_REMOVED,
+      payload: {
+        before: payload,
+      },
+    });
 
     return parent ? { parentId: parent.id } : { parentId: null };
   }
@@ -277,21 +436,37 @@ export class IssuesService {
   async updateProgress(
     issueId: string,
     data: { progress: number },
+    user: User,
   ) {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
-      relations: ['parent']
+      relations: ['parent', 'project', 'project.team'],
     });
+
     if (!issue) {
-      throw new NotFoundException('이슈 없음');
+      throw new NotFoundException('해당 이슈가 없습니다.');
     }
 
+    const before = issue.progress;
     issue.progress = data.progress;
     await this.issueRepository.save(issue);
 
     if (issue.parent) {
       await this.recalculateParentProgress(issue.parent);
     }
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: issue.project.id,
+      teamId: issue.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: issue.id,
+      action: IssueActivityAction.PROGRESS_UPDATED,
+      payload: {
+        before: { progress: before },
+        after: { progress: data.progress },
+      },
+    });
 
     return issue;
   }
@@ -300,7 +475,9 @@ export class IssuesService {
   async recalculateParentProgress(
     parent: Issue,
   ) {
-    const subtasks = await this.issueRepository.find({ where: { parent: { id: parent.id } } });
+    const subtasks = await this.issueRepository.find({
+      where: { parent: { id: parent.id } }
+    });
     if (!subtasks.length) return;
 
     parent.progress = Math.floor(subtasks.reduce((sum, s) => sum + s.progress, 0) / subtasks.length);
@@ -316,13 +493,66 @@ export class IssuesService {
   async updateStatus(
     issueId: string,
     status: IssueStatus,
+    user: User,
   ) {
-    const issue = await this.issueRepository.findOne({ where: { id: issueId } });
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['project', 'project.team'],
+    });
     if (!issue) {
-      throw new NotFoundException('이슈 없음');
+      throw new NotFoundException('해당 이슈가 없습니다.');
     }
 
+    const beforeStatus = issue.status;
     issue.status = status;
-    return this.issueRepository.save(issue);
+    await this.issueRepository.save(issue);
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: issue.project.id,
+      teamId: issue.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: issue.id,
+      action: IssueActivityAction.STATUS_CHANGED,
+      payload: {
+        before: { status: beforeStatus },
+        after: { status },
+      },
+    });
+  }
+
+  async getProjectGantt(
+    projectId: string
+  ): Promise<GanttIssueDto[]> {
+    const issues = await this.issueRepository.find({
+      where: { project: { id: projectId } },
+      relations: ['assignee', 'parent'],
+    });
+
+    return issues
+      .filter(issue => issue.startAt && issue.endAt)
+      .map(issue => ({
+        id: issue.id,
+        title: issue.title,
+        startAt: issue.startAt,
+        endAt: issue.endAt,
+        progress: issue.progress,
+        parentId: issue.parent?.id,
+        assignee: issue.assignee
+          ? { id: issue.assignee.id, name: issue.assignee.name }
+          : undefined,
+        color: ISSUE_STATUS_COLOR[issue.status],
+      }));
+  }
+
+  async getIssueById(issueId: string): Promise<Issue> {
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['assignee', 'project', 'project.team'],
+    });
+    if (!issue) {
+      throw new NotFoundException('해당 이슈가 없습니다.');
+    }
+    return issue;
   }
 }

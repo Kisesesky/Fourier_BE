@@ -19,11 +19,12 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { FilesModule } from './modules/files/files.module';
 import { IssuesModule } from './modules/issues/issues.module';
+import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 
 @Module({
   imports: [
     DatabaseModule,
-    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, TeamModule, ProjectsModule, NotificationModule, FilesModule],
+    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, TeamModule, ProjectsModule, NotificationModule, FilesModule, ActivityLogModule],
   controllers: [AppController],
   providers: [AppService],
 })

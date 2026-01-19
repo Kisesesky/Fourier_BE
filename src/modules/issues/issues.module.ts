@@ -8,11 +8,13 @@ import { IssueComment } from './entities/issue-comment.entity';
 import { User } from '../users/entities/user.entity';
 import { IssuesGateway } from './gateways/issues.gateway';
 import { CalendarModule } from '../calendar/calendar.module';
+import { ActivityLogModule } from '../activity-log/activity-log.module';
 
 @Module({
   imports:[
     TypeOrmModule.forFeature([Project, Issue, IssueComment, User]),
     CalendarModule,
+    ActivityLogModule,
   ],
   controllers: [IssuesController],
   providers: [IssuesService, IssuesGateway],

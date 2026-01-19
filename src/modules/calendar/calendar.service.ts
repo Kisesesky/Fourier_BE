@@ -11,7 +11,6 @@ import { CalendarCategory } from './entities/calendar-category.entity';
 import { CreateCalendarCategoryDto } from './dto/create-calendar-category.dto';
 import { UpdateCalendarCategoryDto } from './dto/update-calendar-category.dto';
 import { mapCategory, mapEventToResponse } from './utils/calendar.mapper';
-import { CreateCalendarEventFromIssueDto } from './dto/create-calendar-event-from-issue.dto';
 import { Issue } from '../issues/entities/issue.entity';
 
 @Injectable()
@@ -23,6 +22,8 @@ export class CalendarService {
     private readonly calendarCategoryRepository: Repository<CalendarCategory>,
     @InjectRepository(ProjectMember)
     private readonly projectMemberRepository: Repository<ProjectMember>,
+    @InjectRepository(Issue)
+    private readonly issueRepository: Repository<Issue>,
   ) {}
 
   private async checkProjectMember(
@@ -66,6 +67,7 @@ export class CalendarService {
       endAt: new Date(createCalendarEventDto.endAt),
       location: createCalendarEventDto.location,
       memo: createCalendarEventDto.memo,
+      sourceType: 'manual',
     });
 
     return mapEventToResponse(event);
@@ -109,6 +111,10 @@ export class CalendarService {
 
     if (!event) {
       throw new NotFoundException('이벤트가 없습니다.');
+    }
+
+    if (event.sourceType === 'issue') {
+      throw new ForbiddenException('이슈 일정은 캘린더에서 직접 수정할 수 없습니다.');
     }
 
     await this.checkProjectMember(event.project.id, user.id);
@@ -159,6 +165,10 @@ export class CalendarService {
 
     if (!event) {
       throw new NotFoundException('이벤트가 없습니다.');
+    }
+
+    if (event.sourceType === 'issue') {
+      throw new ForbiddenException('이슈 일정은 캘린더에서 직접 삭제할 수 없습니다.');
     }
 
     await this.checkProjectMember(event.project.id, user.id);
@@ -244,8 +254,11 @@ export class CalendarService {
     return this.calendarCategoryRepository.save(category);
   }
 
-  async createEventFromIssue(issue: Issue) {
-    const category = await this.getDefaultCategory(issue.project.id); // 프로젝트 기본 이슈 카테고리
+  async createEventFromIssue(
+    issue: Issue
+  ) {
+    const category = await this.getDefaultCategory(issue.project.id);
+
     return this.calendarEventRepository.save({
       title: issue.title,
       project: { id: issue.project.id },
@@ -258,17 +271,51 @@ export class CalendarService {
   }
 
   async updateEventFromIssue(issue: Issue) {
-    if (!issue.calendarEventId) return null;
-    return this.calendarEventRepository.update(issue.calendarEventId, {
+    if (!issue.calendarEventId) return;
+
+    await this.calendarEventRepository.update(issue.calendarEventId, {
       title: issue.title,
       startAt: issue.startAt,
       endAt: issue.endAt,
     });
   }
 
-  async deleteEventByIssue(issue: Issue) {
-    if (!issue.calendarEventId) return null;
+  async deleteEventByIssue(
+    issue: Issue
+  ) {
+    if (!issue.calendarEventId) return;
+
     await this.calendarEventRepository.delete(issue.calendarEventId);
-    issue.calendarEventId = null;
+  }
+
+  async updateIssueDatesFromCalendar(
+    eventId: string,
+    startAt: string,
+    endAt: string,
+  ) {
+    const event = await this.calendarEventRepository.findOne({
+      where: { id: eventId },
+    });
+
+    if (!event || event.sourceType !== 'issue') {
+      throw new ForbiddenException('이슈 일정만 이동할 수 있습니다.');
+    }
+
+    const issue = await this.issueRepository.findOne({
+      where: { id: event.linkedIssueId },
+    });
+
+    if (!issue) {
+      throw new NotFoundException('연결된 이슈가 없습니다.');
+    }
+
+    issue.startAt = new Date(startAt);
+    issue.endAt = new Date(endAt);
+
+    const saved = await this.issueRepository.save(issue);
+
+    await this.updateEventFromIssue(saved);
+
+    return { success: true };
   }
 }

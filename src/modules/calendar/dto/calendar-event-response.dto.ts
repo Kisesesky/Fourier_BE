@@ -24,6 +24,12 @@ export class CalendarEventResponseDto {
   @ApiProperty({ example: '안건 정리', required: false })
   memo?: string;
 
+  @ApiProperty({ example: '타입', required: false })
+  sourceType?: string;
+
+  @ApiProperty({ example: '타입', required: false })
+  linkedIssueId?: string;
+
   @ApiProperty({ example: 'user-uuid', required: false })
   createdById?: string;
 

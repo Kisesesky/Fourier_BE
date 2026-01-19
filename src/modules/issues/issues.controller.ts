@@ -11,7 +11,6 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags
 import { AssignIssueDto } from './dto/assign-issue.dto';
 import { IssueResponseDto } from './dto/issue-response.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
-import { IssueStatus } from './constants/issue-status.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AddSubtaskDto } from './dto/add-subtask.dto';
 
@@ -21,16 +20,16 @@ import { AddSubtaskDto } from './dto/add-subtask.dto';
 @Controller('projects/:projectId/issues')
 export class IssuesController {
   constructor(
-    private readonly issuesService: IssuesService
+    private readonly issuesService: IssuesService,
   ) {}
 
   @ApiOperation({ summary: '이슈 추가'})
   @ApiCreatedResponse({ type: IssueResponseDto })
   @Post()
-  create(
+  createIssue(
     @Param('projectId') projectId: string,
     @RequestUser() user: User,
-    @Body() createIssueDto: CreateIssueDto
+    @Body() createIssueDto: CreateIssueDto,
   ) {
     return this.issuesService.createIssue(projectId, createIssueDto, user);
   }
@@ -38,33 +37,48 @@ export class IssuesController {
   @ApiOperation({ summary: '이슈 수정'})
   @ApiOkResponse({ type: IssueResponseDto })
   @Patch(':issueId')
-  update(
+  updateIssue(
     @Param('issueId') issueId: string,
-    @Body() updateIssueDto: UpdateIssueDto
+    @Body() updateIssueDto: UpdateIssueDto,
+    @RequestUser() user: User,
   ) {
-    return this.issuesService.updateIssue(issueId, updateIssueDto);
+    return this.issuesService.updateIssue(issueId, updateIssueDto, user);
   }
 
   @ApiOperation({ summary: '담당자 지정'})
   @ApiOkResponse({ type: IssueResponseDto })
   @Patch(':issueId/assign')
-  assign(
+  assignIssue(
     @Param('issueId') issueId: string,
-    @Body() assignIssueDto: AssignIssueDto
+    @Body() assignIssueDto: AssignIssueDto,
+    @RequestUser() user: User,
   ) {
-    return this.issuesService.assignIssue(issueId, assignIssueDto.userId);
+    return this.issuesService.assignIssue(issueId, assignIssueDto.userId, user);
   }
 
-  @ApiOperation({ summary: '프로젝트 이슈 목록' })
-  @ApiOkResponse({ type: [IssueResponseDto] })
-  @Get()
-  getProjectIssues(
-    @Param('projectId') projectId: string
+  @ApiOperation({ summary: '진행률 수정'})
+  @ApiOkResponse({ type: IssueResponseDto })
+  @Patch(':issueId/progress')
+  updateProgress(
+    @Param('issueId') issueId: string,
+    @Body() updateProgressDto: UpdateProgressDto,
+    @RequestUser() user: User,
   ) {
-    return this.issuesService.getProjectIssues(projectId);
+    return this.issuesService.updateProgress(issueId, updateProgressDto, user);
   }
 
-  @ApiOperation({ summary: '커멘트 추가'})
+  @ApiOperation({ summary: '상태 변경' })
+  @ApiOkResponse({ type: IssueResponseDto })
+  @Patch(':issueId/status')
+  updateStatus(
+    @Param('issueId') issueId: string,
+    @Body() updateStatusDto: UpdateStatusDto,
+    @RequestUser() user: User
+  ) {
+    return this.issuesService.updateStatus(issueId, updateStatusDto.status, user);
+  }
+
+  @ApiOperation({ summary: '댓글 추가'})
   @Post(':issueId/comment')
   addComment(
     @Param('issueId') issueId: string,
@@ -74,56 +88,45 @@ export class IssuesController {
     return this.issuesService.addComment(issueId, user, createCommentDto.content);
   }
 
-  @ApiOperation({ summary: '진행률 수정'})
-  @ApiOkResponse({ type: IssueResponseDto })
-  @Patch(':issueId/progress')
-  updateProgress(
-    @Param('issueId') issueId: string,
-    @Body() updateProgressDto: UpdateProgressDto,
+  @ApiOperation({ summary: '하위 업무 추가' })
+  @Post('subtask')
+  addSubtask(
+    @Body() addSubtaskDto: AddSubtaskDto,
+    @RequestUser() user: User,
   ) {
-    return this.issuesService.updateProgress(issueId, updateProgressDto);
+    return this.issuesService.addSubtask(addSubtaskDto, user);
   }
 
-  @ApiOperation({ summary: '상태 변경' })
-  @ApiOkResponse({ type: IssueResponseDto })
-  @Patch(':issueId/status')
-  updateStatus(
-    @Param('issueId') issueId: string,
-    @Body() dto: UpdateStatusDto,
+  @ApiOperation({ summary: '프로젝트 이슈 목록' })
+  @ApiOkResponse({ type: [IssueResponseDto] })
+  @Get()
+  getProjectIssues(
+    @Param('projectId') projectId: string,
   ) {
-    return this.issuesService.updateStatus(issueId, dto.status);
-  }
-
-  @ApiOperation({ summary: 'Kanban board 상태 변경' })
-  @Patch(':id/status')
-  async changeStatus(
-    @Param('id') issueId: string,
-    @Body('status') status: IssueStatus
-  ) {
-    return this.issuesService.changeStatus(issueId, status);
+    return this.issuesService.getProjectIssues(projectId);
   }
 
   @ApiOperation({ summary: '프로젝트 Kanban 보드' })
   @Get('board')
-  async getBoard(
-    @Param('projectId') projectId: string
+  async getProjectBoard(
+    @Param('projectId') projectId: string,
   ) {
     return this.issuesService.getProjectBoard(projectId);
   }
 
   @ApiOperation({ summary: '프로젝트 대시보드 통계' })
   @Get('dashboard')
-  async getDashboard(
-    @Param('projectId') projectId: string
+  async getProjectDashboard(
+    @Param('projectId') projectId: string,
   ) {
     return this.issuesService.getProjectDashboard(projectId);
   }
 
-  @ApiOperation({ summary: '하위 업무' })
-  @Post('subtask')
-  addSubtask(
-    @Body() addSubtaskDto: AddSubtaskDto
+  @ApiOperation({ summary: '프로젝트 gantt 조회' })
+  @Get('gantt')
+  getProjectGantt(
+    @Param('projectId') projectId: string,
   ) {
-    return this.issuesService.addSubtask(addSubtaskDto);
+    return this.issuesService.getProjectGantt(projectId);
   }
 }

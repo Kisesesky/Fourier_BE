@@ -1,5 +1,5 @@
 // src/modules/calendar/entities/calendar-event.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { Project } from 'src/modules/projects/entities/project.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 import { CalendarCategory } from './calendar-category.entity';
@@ -33,6 +33,7 @@ export class CalendarEvent {
   @Column({ nullable: true, type: 'text' })
   memo?: string;
 
+  @Index()
   @Column({ nullable: true })
   linkedIssueId?: string;
 

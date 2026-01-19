@@ -4,13 +4,13 @@ import { CalendarService } from './calendar.service';
 import { CalendarController } from './calendar.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CalendarEvent } from './entities/calendar-event.entity';
-import { ProjectsModule } from '../projects/projects.module';
 import { ProjectMember } from '../projects/entities/project-member.entity';
 import { CalendarCategory } from './entities/calendar-category.entity';
+import { Issue } from '../issues/entities/issue.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CalendarEvent, CalendarCategory, ProjectMember]),
+    TypeOrmModule.forFeature([CalendarEvent, CalendarCategory, ProjectMember, Issue]),
   ],
   providers: [CalendarService],
   controllers: [CalendarController],

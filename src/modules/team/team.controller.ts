@@ -64,10 +64,10 @@ export class TeamController {
   })
   @Post('invite/:inviteId/accept')
   accept(
-    @Param('teamInviteId') teamInviteId: string,
+    @Param('inviteId') inviteId: string,
     @RequestUser() user: User,
   ) {
-    return this.teamService.acceptInvite(teamInviteId, user);
+    return this.teamService.acceptInvite(inviteId, user);
   }
 
   @ApiOperation({ summary: '팀 초대 거절'})
@@ -78,9 +78,9 @@ export class TeamController {
   })
   @Post('invite/:inviteId/reject')
   reject(
-    @Param('teamInviteId') teamInviteId: string,
+    @Param('inviteId') inviteId: string,
     @RequestUser() user: User,
   ) {
-    return this.teamService.rejectInvite(teamInviteId, user);
+    return this.teamService.rejectInvite(inviteId, user);
   }
 }

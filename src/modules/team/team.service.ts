@@ -37,7 +37,10 @@ export class TeamService {
   async createTeam(workspaceId: string, createTeamDto: CreateTeamDto, user: User) {
     const { name, iconType, iconValue } = createTeamDto;
     const workspace = await this.workspaceRepository.findOne({
-      where: { id: workspaceId },
+      where: {
+        id: workspaceId,
+        createdBy: { id: user.id },
+      },
     });
 
     if (!workspace) {
