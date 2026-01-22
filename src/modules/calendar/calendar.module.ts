@@ -14,6 +14,6 @@ import { Issue } from '../issues/entities/issue.entity';
   ],
   providers: [CalendarService],
   controllers: [CalendarController],
-  exports: [CalendarService],
+  exports: [CalendarService, TypeOrmModule],
 })
 export class CalendarModule {}

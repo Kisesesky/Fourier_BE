@@ -1,11 +1,11 @@
 // src/modules/activity-log/dto/create-activity-log.dto.ts
-import { ActivityTargetType } from "../constants/activity-target-type.enum";
+import { ActivityTargetType } from '../constants/activity-target-type.enum';
 
 export class CreateActivityLogDto {
   actorId?: string;
 
-  projectId: string;
   teamId: string;
+  projectId?: string;
 
   targetType: ActivityTargetType;
   targetId: string;

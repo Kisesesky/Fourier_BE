@@ -40,6 +40,16 @@ export class TeamController {
     return this.teamService.getTeams(workspaceId, user);
   }
 
+  @ApiOperation({ summary: '팀 멤버 목록' })
+  @ApiOkResponse({ type: [User] })
+  @Get(':teamId/members')
+  async getTeamMembers(
+    @Param('workspaceId') workspaceId: string,
+    @Param('teamId') teamId: string,
+  ) {
+    return this.teamService.getTeamMembers(teamId);
+  }
+
   @ApiOperation({ summary: '팀 초대'})
   @ApiOkResponse({
     schema: {

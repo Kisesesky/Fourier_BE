@@ -1,28 +1,26 @@
 // src/modules/activity-log/entities/activity-log.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, Index } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
-import { Project } from '../../projects/entities/project.entity';
-import { Team } from '../../team/entities/team.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 import { ActivityTargetType } from '../constants/activity-target-type.enum';
 
 @Entity()
-@Index(['project', 'createdAt'])
+@Index(['teamId', 'createdAt'])
+@Index(['projectId', 'createdAt'])
 export class ActivityLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
-  actor?: User;
+  @Column({ nullable: true })
+  actorId?: string;
 
-  @ManyToOne(() => Project, { onDelete: 'CASCADE' })
-  project: Project;
+  @Column()
+  teamId: string;
 
-  @ManyToOne(() => Team, { onDelete: 'CASCADE' })
-  team: Team;
+  @Column({ nullable: true })
+  projectId?: string;
 
   @Column({ type: 'enum', enum: ActivityTargetType })
   targetType: ActivityTargetType;
-  
+
   @Column()
   targetId: string;
 

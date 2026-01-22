@@ -77,6 +77,23 @@ export class TeamService {
       .getMany();
   }
 
+  async getTeamMembers(teamId: string) {
+    const team = await this.teamRepository.findOne({
+      where: { id: teamId },
+      relations: ['members', 'members.user'],
+    });
+
+    if (!team) {
+      throw new NotFoundException('팀을 찾을 수 없습니다.');
+    }
+
+    return team.members.map((member) => ({
+      userId: member.user.id,
+      name: member.user.displayName ?? member.user.name,
+      role: member.role,
+    }));
+  }
+
   async inviteMember( teamId: string, inviter: User, inviteeId: string ) {
     if (inviter.id == inviteeId) {
       throw new ConflictException('자기 자신을 초대할 수 없습니다.');

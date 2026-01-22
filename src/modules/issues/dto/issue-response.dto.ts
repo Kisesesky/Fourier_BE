@@ -17,17 +17,17 @@ export class IssueResponseDto {
   @ApiProperty({ example: 40 })
   progress: number;
 
-  @ApiProperty({ type: IssueUserDto, nullable: true })
-  assignee?: IssueUserDto;
-
-  @ApiProperty({ type: IssueUserDto })
-  creator: IssueUserDto;
-
   @ApiProperty({ example: '2025-01-01', nullable: true })
   startAt?: Date;
 
   @ApiProperty({ example: '2025-01-10', nullable: true })
   endAt?: Date;
+
+  @ApiProperty({ type: IssueUserDto, nullable: true })
+  assignee?: IssueUserDto;
+
+  @ApiProperty({ type: IssueUserDto })
+  creator: IssueUserDto;  
 
   @ApiProperty({ type: () => [IssueResponseDto] })
   subtasks: IssueResponseDto[];

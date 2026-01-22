@@ -37,6 +37,14 @@ export class ProjectsService {
     private readonly issuesService: IssuesService,
   ) {}
 
+  async getProjects(teamId: string) {
+    const projects = await this.projectRepository.find({
+      where: { team: { id: teamId } },
+    });
+
+    return projects;
+  }
+
   /** 프로젝트 생성 */
   async createProject(
     teamId: string,

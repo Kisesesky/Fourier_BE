@@ -1,5 +1,5 @@
 // src/modules/issue/issue.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Issue } from './entities/issue.entity';
@@ -21,6 +21,9 @@ import { snapshot } from './utils/snapshot';
 import { ActivityTargetType } from '../activity-log/constants/activity-target-type.enum';
 import { IssueActivityAction } from './constants/issue-activity-action.enum';
 import { CalendarActivityAction } from '../calendar/constants/calendar-activity-action.enum';
+import * as jwt from 'jsonwebtoken';
+import { AppConfigService } from 'src/config/app/config.service';
+import { toTime } from './utils/to-time.util';
 
 @Injectable()
 export class IssuesService {
@@ -35,7 +38,21 @@ export class IssuesService {
     private readonly issueCommentRepository: Repository<IssueComment>,
     private readonly calendarService: CalendarService,
     private readonly activityLogService: ActivityLogService,
+    private readonly appConfigService: AppConfigService,
   ) {}
+
+  async verifyToken(token: string): Promise<User> {
+    try {
+      const payload: any = jwt.verify(token, this.appConfigService.jwtSecret);
+      const user = await this.userRepository.findOne({ where: { id: payload.sub } });
+      if (!user) {
+        throw new UnauthorizedException('유저 없음');
+      }
+      return user;
+    } catch (err) {
+      throw new UnauthorizedException('유효하지 않은 토큰');
+    }
+  }
 
   /** 프로젝트별 Kanban 보드 조회 */
   async getProjectBoard(
@@ -43,7 +60,15 @@ export class IssuesService {
   ) {
     const issues = await this.issueRepository.find({
       where: { project: { id: projectId }, parent: null },
-      relations: ['assignee', 'creator', 'comments', 'comments.author', 'subtasks'],
+      relations: [
+        'creator',
+        'assignee',
+        'comments',
+        'comments.author',
+        'subtasks',
+        'subtasks.creator',
+        'subtasks.assignee',
+      ],
       order: { createdAt: 'ASC' },
     });
 
@@ -144,12 +169,13 @@ export class IssuesService {
 
     await this.activityLogService.log({
       actorId: user.id,
-      projectId: project.id,
-      teamId: project.team.id,
+      projectId: issue.project.id,
+      teamId: issue.project.team.id,
       targetType: ActivityTargetType.ISSUE,
-      targetId: saved.id,
+      targetId: issue.id,
       action: IssueActivityAction.CREATED,
       payload: {
+        before: snapshot(saved),
         after: snapshot(saved),
       },
     });
@@ -173,6 +199,8 @@ export class IssuesService {
     }
 
     const before = snapshot(issue);
+    const beforeStartAt = issue.startAt;
+    const beforeEndAt = issue.endAt;
     Object.assign(issue, {
       ...updateIssueDto,
       startAt: updateIssueDto.startAt ? new Date(updateIssueDto.startAt) : issue.startAt,
@@ -183,8 +211,8 @@ export class IssuesService {
     const after = snapshot(saved);
 
     const isDateChanged =
-      before.startAt?.getTime() !== after.startAt?.getTime() ||
-      before.endAt?.getTime() !== after.endAt?.getTime();
+      toTime(beforeStartAt) !== toTime(saved.startAt) ||
+      toTime(beforeEndAt) !== toTime(saved.endAt);
 
     if (isDateChanged) {
       await syncCalendarEvent(saved, this.calendarService, this.issueRepository);
@@ -198,30 +226,32 @@ export class IssuesService {
         action: CalendarActivityAction.MOVED,
         payload: {
           before: {
-            startAt: before.startAt,
-            endAt: before.endAt,
+            startAt: beforeStartAt,
+            endAt: beforeEndAt,
           },
           after: {
-            startAt: after.startAt,
-            endAt: after.endAt,
+            startAt: saved.startAt,
+            endAt: saved.endAt,
           },
           meta: {
             issueId: saved.id,
           },
         },
       });
+    };
+
+    const teamId = saved.project?.team?.id ?? null;
+    if (teamId) {
+      await this.activityLogService.log({
+        actorId: user.id,
+        projectId: saved.project.id,
+        teamId,
+        targetType: ActivityTargetType.ISSUE,
+        targetId: saved.id,
+        action: IssueActivityAction.UPDATED,
+        payload: { before, after },
+      });
     }
-
-    await this.activityLogService.log({
-      actorId: user.id,
-      projectId: saved.project.id,
-      teamId: saved.project.team.id,
-      targetType: ActivityTargetType.ISSUE,
-      targetId: saved.id,
-      action: IssueActivityAction.UPDATED,
-      payload: { before, after },
-    });
-
     return mapIssuesToResponse(saved);
   }
 
@@ -306,12 +336,15 @@ export class IssuesService {
     const issues = await this.issueRepository.find({
       where: { project: { id: projectId }, parent: null },
       relations: [
-        'subtasks',
-        'subtasks.subtasks',
-        'assignee',
         'creator',
+        'assignee',
         'comments',
         'comments.author',
+        'subtasks',
+        'subtasks.creator',
+        'subtasks.assignee',
+        'subtasks.comments',
+        'subtasks.comments.author',
       ],
       order: { createdAt: 'ASC' },
     });

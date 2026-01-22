@@ -23,6 +23,13 @@ export class ProjectsController {
     private readonly projectService: ProjectsService
   ) {}
 
+  @ApiOperation({ summary: '팀 프로젝트 목록' })
+  @ApiOkResponse({ type: [ProjectResponseDto] })
+  @Get()
+  async getProjects(@Param('teamId') teamId: string) {
+    return this.projectService.getProjects(teamId);
+  }
+
   @ApiOperation({ summary: '프로젝트 추가'})
   @ApiOkResponse({ type: ProjectResponseDto })
   @Post()

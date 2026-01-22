@@ -1,14 +1,16 @@
 // src/modules/activity-log/utils/activity-message.util.ts
 import { ActivityLog } from '../entities/activity-log.entity';
+import { User } from '../../users/entities/user.entity';
 import { IssueActivityAction } from '../../issues/constants/issue-activity-action.enum';
+import { ActivityAction } from '../constants/activity-action.enum';
 
-export function buildActivityMessage(activityLog: ActivityLog): string {
-  const name =
-    activityLog.actor?.displayName ??
-    activityLog.actor?.name ??
-    '알 수 없음';
+export function buildActivityMessage(
+  log: ActivityLog,
+  actor?: User,
+): string {
+  const name = actor?.displayName ?? actor?.name ?? '알 수 없음';
 
-  switch (activityLog.action) {
+  switch (log.action) {
     case IssueActivityAction.CREATED:
       return `${name}이 이슈를 생성했습니다.`;
 
@@ -30,15 +32,11 @@ export function buildActivityMessage(activityLog: ActivityLog): string {
     case IssueActivityAction.PROGRESS_UPDATED:
       return `${name}이 진행률을 변경했습니다.`;
 
-    case IssueActivityAction.SUBTASK_ADDED:
-      return `${name}이 하위 업무를 추가했습니다.`;
+    case ActivityAction.MENTION_USER:
+      return `${name}이 멘션했습니다.`;
 
-    case IssueActivityAction.SUBTASK_REMOVED:
-      return `${name}이 하위 업무를 제거했습니다.`;
-
-    case 'calendar.moved':
-      return `${name}이 일정을 변경했습니다.`;
-
+    case ActivityAction.MENTION_TEAM:
+      return `${name}이 팀 전체를 멘션했습니다.`;
     default:
       return `${name}이 작업을 수행했습니다.`;
   }

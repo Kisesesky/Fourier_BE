@@ -20,11 +20,12 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { FilesModule } from './modules/files/files.module';
 import { IssuesModule } from './modules/issues/issues.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
+import { MentionModule } from './modules/mention/mention.module';
 
 @Module({
   imports: [
     DatabaseModule,
-    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, TeamModule, ProjectsModule, NotificationModule, FilesModule, ActivityLogModule],
+    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, TeamModule, ProjectsModule, NotificationModule, FilesModule, ActivityLogModule, MentionModule],
   controllers: [AppController],
   providers: [AppService],
 })

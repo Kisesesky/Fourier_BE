@@ -6,4 +6,5 @@ export enum ActivityTargetType {
   CHAT = 'CHAT',
   PROJECT = 'PROJECT',
   TEAM = 'TEAM',
+  USER = 'USER'
 }

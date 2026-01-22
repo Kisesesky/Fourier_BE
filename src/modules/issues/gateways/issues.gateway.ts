@@ -7,24 +7,33 @@ import { WsUpdateStatusDto } from '../dto/ws-update-status.dto';
 import { WsAddSubtaskDto } from '../dto/ws-add-subtask.dto';
 import { WsRemoveSubtaskDto } from '../dto/ws-remove-subtask.dto';
 import { User } from 'src/modules/users/entities/user.entity';
+import { JwtService } from '@nestjs/jwt';
+import { mapIssuesToResponse } from '../utils/issues.mapper';
 
 @WebSocketGateway({ namespace: '/issue', cors: { origin: true } })
 export class IssuesGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private onlineUsers = new Map<string, string>();
 
-  constructor(private readonly issuesService: IssuesService) {}
+  constructor(
+    private readonly issuesService: IssuesService,
+  ) {}
 
   /** 연결 */
-  handleConnection(client: Socket) {
-    const userId = client.handshake.query.userId as string;
-    if (!userId) {
-      client.disconnect();
-      return;
-    }
-    this.onlineUsers.set(userId, client.id);
-    console.log(`User ${userId} connected: ${client.id}`);
+  async handleConnection(client: Socket) {
+  try {
+    const token = client.handshake.auth?.token;
+    if (!token) return client.disconnect();
+
+    const user = await this.issuesService.verifyToken(token);
+    if (!user) return client.disconnect();
+
+    client.data.user = user;
+    console.log(`Issue WS connected: ${user.id}`);
+  } catch (e) {
+    client.disconnect();
   }
+}
 
   /** 연결 해제 */
   handleDisconnect(client: Socket) {
@@ -35,95 +44,95 @@ export class IssuesGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  /** 하위 업무 추가 */
+  private getUser(client: Socket): User {
+    const user = client.data.user as User;
+    if (!user) {
+      throw new Error('WS user not found');
+    }
+    return user;
+  }
+
   @SubscribeMessage('add-subtask')
   async handleAddSubtask(
     @MessageBody() body: WsAddSubtaskDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const userId = client.handshake.query.userId as string;
-    if (!userId) return;
+    const user = this.getUser(client);
+    const saved = await this.issuesService.addSubtask(body, user);
+    const fullIssue = await this.issuesService.getIssueById(saved.id);
 
-    const user = { id: userId } as User;
-    const subtask = await this.issuesService.addSubtask(body, user);
-    this.server.emit('subtask-added', subtask);
-    return subtask;
+    const payload = mapIssuesToResponse(fullIssue);
+
+    this.server.emit('subtask-added', payload);
+    return payload;
   }
 
-  /** 하위 업무 삭제 */
   @SubscribeMessage('remove-subtask')
   async handleRemoveSubtask(
     @MessageBody() body: WsRemoveSubtaskDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const userId = client.handshake.query.userId as string;
-    if (!userId) return;
-
-    const user = { id: userId } as User;
+    const user = this.getUser(client);
     const removed = await this.issuesService.removeSubtask(body.subtaskId, user);
+
     this.server.emit('subtask-removed', removed);
     return removed;
   }
 
-  /** 진행률 실시간 업데이트 */
   @SubscribeMessage('update-progress')
-  async handleUpdateProgress(@
-    MessageBody() body: WsUpdateProgressDto,
+  async handleUpdateProgress(
+    @MessageBody() body: WsUpdateProgressDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const userId = client.handshake.query.userId as string;
-    if (!userId) return;
+    const user = this.getUser(client);
 
-    const user = { id: userId } as User;
-    const updatedIssue = await this.issuesService.updateProgress(
+    const issue = await this.issuesService.updateProgress(
       body.issueId,
       { progress: body.progress },
       user,
     );
+
     this.server.emit('progress-updated', {
-      issueId: updatedIssue.id,
-      progress: updatedIssue.progress,
+      issueId: issue.id,
+      progress: issue.progress,
     });
   }
 
-  /** 상태 변경 */
   @SubscribeMessage('update-status')
   async handleUpdateStatus(
     @MessageBody() body: WsUpdateStatusDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const userId = client.handshake.query.userId as string;
-    if (!userId) return;
+    const user = this.getUser(client);
 
-    const user = { id: userId } as User;
-    await this.issuesService.updateStatus(body.issueId, body.status, user);
+    await this.issuesService.updateStatus(
+      body.issueId,
+      body.status,
+      user,
+    );
 
-    const updatedIssue = await this.issuesService.getIssueById(body.issueId);
     this.server.emit('status-updated', {
-      issueId: updatedIssue.id,
-      status: updatedIssue.status,
+      issueId: body.issueId,
+      status: body.status,
     });
   }
 
-  /** 담당자 지정 */
   @SubscribeMessage('assign-issue')
   async handleAssignIssue(
     @MessageBody() body: { issueId: string; userId: string },
     @ConnectedSocket() client: Socket,
   ) {
-    const actorId = client.handshake.query.userId as string;
-    if (!actorId) return;
+    const actor = this.getUser(client);
 
-    const actor = { id: actorId } as User;
-    const updatedIssue = await this.issuesService.assignIssue(
+    const issue = await this.issuesService.assignIssue(
       body.issueId,
       body.userId,
       actor,
     );
 
     this.server.emit('issue-assigned', {
-      issueId: updatedIssue.id,
-      assignee: updatedIssue.assignee,
+      issueId: issue.id,
+      assignee: issue.assignee,
     });
   }
 }

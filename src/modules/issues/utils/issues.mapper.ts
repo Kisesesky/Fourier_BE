@@ -11,26 +11,30 @@ export function mapIssuesToResponse(issue: Issue): IssueResponseDto {
     startAt: issue.startAt,
     endAt: issue.endAt,
     createdAt: issue.createdAt,
-    creator: {
-      id: issue.creator.id,
-      name: issue.creator.displayName ?? issue.creator.name,
-    },
+    creator: issue.creator
+      ? {
+          id: issue.creator.id,
+          name: issue.creator.name,
+        }
+      : null,
     assignee: issue.assignee
       ? {
           id: issue.assignee.id,
           name: issue.assignee.displayName ?? issue.assignee.name,
         }
-      : undefined,
+      : null,
     subtasks: issue.subtasks?.map(mapIssuesToResponse) ?? [],
     comments:
       issue.comments?.map((c) => ({
         id: c.id,
         content: c.content,
         createdAt: c.createdAt,
-        author: {
-          id: c.author.id,
-          name: c.author.displayName ?? c.author.name,
-        },
+        author: c.author
+          ? {
+              id: c.author.id,
+              name: c.author.displayName ?? c.author.name,
+            }
+          : null,
       })) ?? [],
   };
 }

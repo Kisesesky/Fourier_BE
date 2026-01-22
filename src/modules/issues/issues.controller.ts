@@ -23,6 +23,11 @@ export class IssuesController {
     private readonly issuesService: IssuesService,
   ) {}
 
+  @Get('tree')
+  getIssueTree(@Param('projectId') projectId: string) {
+    return this.issuesService.getProjectIssues(projectId);
+  }
+
   @ApiOperation({ summary: '이슈 추가'})
   @ApiCreatedResponse({ type: IssueResponseDto })
   @Post()

@@ -23,4 +23,8 @@ export class NotificationGateway {
     }
     client.join(`user:${userId}`);
   }
+
+  emitUser(userId: string, payload: any) {
+    this.server.to(`user:${userId}`).emit('notification', payload);
+  }
 }

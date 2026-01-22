@@ -3,11 +3,8 @@ import { Issue } from "../entities/issue.entity";
 
 export function snapshot(issue: Issue) {
   return {
-    title: issue.title,
-    status: issue.status,
-    progress: issue.progress,
-    assigneeId: issue.assignee?.id ?? null,
-    startAt: issue.startAt,
-    endAt: issue.endAt,
+    ...issue,
+    startAt: issue.startAt ? new Date(issue.startAt) : null,
+    endAt: issue.endAt ? new Date(issue.endAt) : null,
   };
 }
