@@ -13,7 +13,7 @@ export class TeamResponseDto {
   @ApiProperty({ enum: IconType })
   iconType: IconType;
 
-  @ApiProperty({ example: '🔥', nullable: true })
+  @ApiProperty({ example: 'https://example.com/icon.png', nullable: true })
   iconValue?: string;
 
   @ApiProperty({ example: '2025-01-01T00:00:00.000Z' })

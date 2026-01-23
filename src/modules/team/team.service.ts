@@ -13,6 +13,7 @@ import { User } from '../users/entities/user.entity';
 import { Workspace } from '../workspace/entities/workspace.entity';
 import { TeamInvite } from './entities/team-invite.entity';
 import { CreateTeamDto } from './dto/create-team.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/constants/notification-type.enum';
 import { TeamInviteStatus } from './constants/team-invite-status.enum';
@@ -211,6 +212,29 @@ export class TeamService {
 
     await this.notificationService.markInviteHandled(invite.id, user.id);
 
+    return { success: true };
+  }
+
+  async updateTeam(teamId: string, updateTeamDto: UpdateTeamDto) {
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (!team) {
+      throw new NotFoundException('팀을 찾을 수 없습니다.');
+    }
+
+    if (updateTeamDto.name !== undefined) team.name = updateTeamDto.name;
+    if (updateTeamDto.iconType !== undefined) team.iconType = updateTeamDto.iconType;
+    if (updateTeamDto.iconValue !== undefined) team.iconValue = updateTeamDto.iconValue;
+
+    return this.teamRepository.save(team);
+  }
+
+  async deleteTeam(teamId: string) {
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (!team) {
+      throw new NotFoundException('팀을 찾을 수 없습니다.');
+    }
+
+    await this.teamRepository.remove(team);
     return { success: true };
   }
 }

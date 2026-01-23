@@ -1,20 +1,21 @@
 // src/modules/team/dto/create-team.dto.ts
-import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEnum, IsIn, IsOptional, IsString, MinLength } from "class-validator";
 import { IconType } from "src/common/constants/icon-type";
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateTeamDto {
   @ApiProperty({ example: 'Team', description: '팀 이름' })
   @IsString()
-  @MinLength(2)
+  @MinLength(1)
   name: string;
 
-  @ApiProperty({ enum: IconType, example: IconType.EMOJI, required: false })
+  @ApiProperty({ enum: IconType, example: IconType.IMAGE, required: false })
   @IsOptional()
   @IsEnum(IconType)
+  @IsIn([IconType.IMAGE])
   iconType?: IconType;
 
-  @ApiProperty({ example: '🔥', description: '아이콘 값 (이모지 or 아이콘 코드)', required: false })
+  @ApiProperty({ example: 'https://example.com/icon.png', description: '아이콘 이미지 URL', required: false })
   @IsOptional()
   @IsString()
   iconValue?: string;

@@ -1,5 +1,5 @@
 // src/modules/team/team.controller.ts
-import { Controller, Post, Get, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, UseGuards, Patch, Delete } from '@nestjs/common';
 import { TeamService } from './team.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
@@ -9,6 +9,7 @@ import { TeamOwnerGuard } from './guards/team-owner.guard';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InviteTeamMemberDto } from './dto/Invite-team-member.dto';
 import { TeamResponseDto } from './dto/team-response.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 
 @ApiTags('team')
 @ApiBearerAuth('access-token')
@@ -92,5 +93,32 @@ export class TeamController {
     @RequestUser() user: User,
   ) {
     return this.teamService.rejectInvite(inviteId, user);
+  }
+
+  @ApiOperation({ summary: '팀 정보 수정' })
+  @ApiOkResponse({ type: TeamResponseDto })
+  @Patch(':teamId')
+  @UseGuards(TeamOwnerGuard)
+  updateTeam(
+    @Param('workspaceId') workspaceId: string,
+    @Param('teamId') teamId: string,
+    @Body() updateTeamDto: UpdateTeamDto,
+  ) {
+    return this.teamService.updateTeam(teamId, updateTeamDto);
+  }
+
+  @ApiOperation({ summary: '팀 삭제' })
+  @ApiOkResponse({
+    schema: {
+      example: { success: true },
+    },
+  })
+  @Delete(':teamId')
+  @UseGuards(TeamOwnerGuard)
+  deleteTeam(
+    @Param('workspaceId') workspaceId: string,
+    @Param('teamId') teamId: string,
+  ) {
+    return this.teamService.deleteTeam(teamId);
   }
 }

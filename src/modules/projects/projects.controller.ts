@@ -26,8 +26,8 @@ export class ProjectsController {
   @ApiOperation({ summary: '팀 프로젝트 목록' })
   @ApiOkResponse({ type: [ProjectResponseDto] })
   @Get()
-  async getProjects(@Param('teamId') teamId: string) {
-    return this.projectService.getProjects(teamId);
+  async getProjects(@Param('teamId') teamId: string, @RequestUser() user: User) {
+    return this.projectService.getProjects(teamId, user?.id);
   }
 
   @ApiOperation({ summary: '프로젝트 추가'})
@@ -97,5 +97,46 @@ export class ProjectsController {
     @Body() updateProjectDto: UpdateProjectDto,
   ) {
     return this.projectService.updateProject(projectId, updateProjectDto);
+  }
+
+  @ApiOperation({ summary: '프로젝트 복제' })
+  @UseGuards(ProjectAccessGuard, ProjectManageGuard)
+  @Post(':projectId/clone')
+  cloneProject(
+    @Param('teamId') teamId: string,
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.projectService.cloneProject(teamId, projectId, user);
+  }
+
+  @ApiOperation({ summary: '프로젝트 삭제' })
+  @UseGuards(ProjectAccessGuard, ProjectManageGuard)
+  @Delete(':projectId')
+  deleteProject(
+    @Param('teamId') teamId: string,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.projectService.deleteProject(teamId, projectId);
+  }
+
+  @ApiOperation({ summary: '프로젝트 즐겨찾기 추가' })
+  @UseGuards(ProjectAccessGuard)
+  @Post(':projectId/favorite')
+  addFavorite(
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.projectService.addFavorite(projectId, user);
+  }
+
+  @ApiOperation({ summary: '프로젝트 즐겨찾기 제거' })
+  @UseGuards(ProjectAccessGuard)
+  @Delete(':projectId/favorite')
+  removeFavorite(
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.projectService.removeFavorite(projectId, user);
   }
 }

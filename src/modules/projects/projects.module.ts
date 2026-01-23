@@ -5,6 +5,7 @@ import { Project } from './entities/project.entity';
 import { ProjectsService } from './projects.service';
 import { ProjectsController } from './projects.controller';
 import { ProjectMember } from './entities/project-member.entity';
+import { ProjectFavorite } from './entities/project-favorite.entity';
 import { TeamMember } from '../team/entities/team-member.entity';
 import { ProjectAccessGuard } from './guards/project-access.guard';
 import { ProjectManageGuard } from './guards/project-manage.guard';
@@ -18,7 +19,7 @@ import { CalendarCategory } from '../calendar/entities/calendar-category.entity'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, ProjectMember, TeamMember, Issue, Channel, ChannelMember, CalendarCategory]),
+    TypeOrmModule.forFeature([Project, ProjectMember, ProjectFavorite, TeamMember, Issue, Channel, ChannelMember, CalendarCategory]),
     CalendarModule,
     DocsModule,
     IssuesModule,

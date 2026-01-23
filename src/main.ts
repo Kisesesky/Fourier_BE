@@ -43,13 +43,8 @@ async function bootstrap() {
   );
 
   // CORS 설정 - 배포용
-  // app.enableCors({
-  //   origin: appConfigService.frontendUrl.split(','), // 멀티 도메인 대응 가능
-  //   credentials: true,
-  // });
-
   app.enableCors({
-    origin: '*',
+    origin: appConfigService.frontendUrl.split(','), // 멀티 도메인 대응 가능
     allowedHeaders: ['Authorization', 'Content-Type'],
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,

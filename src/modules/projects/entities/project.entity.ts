@@ -3,9 +3,11 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDat
 import { Team } from '../../team/entities/team.entity';
 import { ProjectMember } from './project-member.entity';
 import { IconType } from 'src/common/constants/icon-type';
+import { ProjectStatus } from '../constants/project-status.enum';
 import { CalendarEvent } from 'src/modules/calendar/entities/calendar-event.entity';
 import { Channel } from 'src/modules/chat/entities/channel.entity';
 import { Issue } from 'src/modules/issues/entities/issue.entity';
+import { ProjectFavorite } from './project-favorite.entity';
 
 @Entity()
 export class Project {
@@ -18,11 +20,14 @@ export class Project {
   @Column({ nullable: true })
   description?: string;
 
-  @Column({ type: 'enum', enum: IconType, default: IconType.EMOJI })
+  @Column({ type: 'enum', enum: IconType, default: IconType.IMAGE })
   iconType: IconType;
 
   @Column({ nullable: true })
   iconValue?: string;
+
+  @Column({ type: 'enum', enum: ProjectStatus, default: ProjectStatus.ACTIVE })
+  status: ProjectStatus;
 
   @ManyToOne(() => Team, (team) => team.projects, { onDelete: 'CASCADE' })
   team: Team;
@@ -38,6 +43,9 @@ export class Project {
 
   @OneToMany(() => Channel, (channel) => channel.project)
   channels: Channel[];
+
+  @OneToMany(() => ProjectFavorite, (favorite) => favorite.project)
+  favorites: ProjectFavorite[];
 
   @CreateDateColumn()
   createdAt: Date;

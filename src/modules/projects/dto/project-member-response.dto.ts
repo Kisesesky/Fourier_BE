@@ -8,6 +8,12 @@ export class ProjectMemberResponseDto {
   @ApiProperty({ example: '홍길동' })
   name: string;
 
+  @ApiProperty({ example: 'user@example.com', nullable: true })
+  email?: string | null;
+
+  @ApiProperty({ example: 'https://example.com/avatar.png', nullable: true })
+  avatarUrl?: string | null;
+
   @ApiProperty({ enum: ProjectRole })
   role: ProjectRole;
 }

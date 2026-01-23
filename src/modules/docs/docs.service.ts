@@ -83,12 +83,26 @@ export class DocsService {
       ? await this.folderRepository.findOneBy({ id: dto.folderId })
       : null;
 
-    const doc = await this.documentRepository.save({
-      title: dto.title,
-      content: dto.content ?? '',
-      folder,
-      author: user,
-    });
+    const content = dto.content ?? '';
+    const searchText = `${dto.title} ${content}`.trim();
+
+    const insertResult = await this.documentRepository
+      .createQueryBuilder()
+      .insert()
+      .into(Document)
+      .values({
+        title: dto.title,
+        content,
+        folder,
+        author: user,
+        searchVector: () => "to_tsvector('simple', :sv)",
+      })
+      .setParameter('sv', searchText)
+      .returning(['id', 'title', 'content', 'createdAt', 'updatedAt'])
+      .execute();
+
+    const docId = insertResult.identifiers[0]?.id;
+    const doc = await this.documentRepository.findOneBy({ id: docId });
 
     await this.documentMemberRepository.save({
       document: doc,
@@ -105,6 +119,14 @@ export class DocsService {
     const doc = await this.documentRepository.findOneBy({ id });
     Object.assign(doc, dto);
     await this.documentRepository.save(doc);
+    const searchText = `${doc.title} ${doc.content ?? ''}`.trim();
+    await this.documentRepository
+      .createQueryBuilder()
+      .update(Document)
+      .set({ searchVector: () => "to_tsvector('simple', :sv)" })
+      .setParameter('sv', searchText)
+      .where('id = :id', { id })
+      .execute();
     await this.saveVersion(doc, user);
     return doc;
   }

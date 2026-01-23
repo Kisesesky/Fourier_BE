@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Project } from './entities/project.entity';
 import { ProjectMember } from './entities/project-member.entity';
+import { ProjectFavorite } from './entities/project-favorite.entity';
 import { TeamMember } from '../team/entities/team-member.entity';
 import { User } from '../users/entities/user.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -24,6 +25,8 @@ export class ProjectsService {
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(ProjectMember)
     private readonly projectMemberRepository: Repository<ProjectMember>,
+    @InjectRepository(ProjectFavorite)
+    private readonly projectFavoriteRepository: Repository<ProjectFavorite>,
     @InjectRepository(TeamMember)
     private readonly teamMemberRepository: Repository<TeamMember>,
     @InjectRepository(Channel)
@@ -37,12 +40,27 @@ export class ProjectsService {
     private readonly issuesService: IssuesService,
   ) {}
 
-  async getProjects(teamId: string) {
+  async getProjects(teamId: string, userId?: string) {
     const projects = await this.projectRepository.find({
       where: { team: { id: teamId } },
     });
 
-    return projects;
+    if (!userId) return projects;
+
+    const favorites = await this.projectFavoriteRepository
+      .createQueryBuilder('favorite')
+      .select('favorite.projectId', 'projectId')
+      .leftJoin('favorite.project', 'project')
+      .leftJoin('project.team', 'team')
+      .where('favorite.userId = :userId', { userId })
+      .andWhere('team.id = :teamId', { teamId })
+      .getRawMany<{ projectId: string }>();
+
+    const favoriteIds = new Set(favorites.map((favorite) => favorite.projectId));
+    return projects.map((project) => ({
+      ...project,
+      isFavorite: favoriteIds.has(project.id),
+    }));
   }
 
   /** 프로젝트 생성 */
@@ -248,6 +266,8 @@ export class ProjectsService {
     return project.members.map((member) => ({
       userId: member.user.id,
       name: member.user.displayName ?? member.user.name,
+      email: member.user.email,
+      avatarUrl: member.user.avatarUrl,
       role: member.role,
     }));
   }
@@ -290,5 +310,78 @@ export class ProjectsService {
     if (updateProjectDto.iconValue !== undefined) project.iconValue = updateProjectDto.iconValue;
 
     return this.projectRepository.save(project);
+  }
+
+  /** 프로젝트 복제 */
+  async cloneProject(teamId: string, projectId: string, user: User) {
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, team: { id: teamId } },
+      relations: ['team'],
+    });
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
+
+    const name = `${project.name} Copy`;
+    const dto: CreateProjectDto = {
+      name,
+      description: project.description,
+      iconType: project.iconType,
+      iconValue: project.iconValue,
+    };
+
+    return this.createProject(teamId, dto, user);
+  }
+
+  /** 프로젝트 삭제 */
+  async deleteProject(teamId: string, projectId: string) {
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, team: { id: teamId } },
+    });
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
+
+    // 채널 멤버 → 채널 순서로 정리 (FK 제약 회피)
+    const channels = await this.channelRepository.find({
+      where: { project: { id: projectId } },
+    });
+    if (channels.length > 0) {
+      const channelIds = channels.map((channel) => channel.id);
+      await this.channelMemberRepository.delete({
+        channel: { id: In(channelIds) },
+      });
+    }
+
+    await this.projectRepository.remove(project);
+    return { success: true };
+  }
+
+  async addFavorite(projectId: string, user: User) {
+    const project = await this.projectRepository.findOne({ where: { id: projectId } });
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
+
+    const exists = await this.projectFavoriteRepository.findOne({
+      where: { project: { id: projectId }, user: { id: user.id } },
+    });
+    if (exists) return exists;
+
+    return this.projectFavoriteRepository.save(
+      this.projectFavoriteRepository.create({
+        project,
+        user,
+      }),
+    );
+  }
+
+  async removeFavorite(projectId: string, user: User) {
+    const favorite = await this.projectFavoriteRepository.findOne({
+      where: { project: { id: projectId }, user: { id: user.id } },
+    });
+    if (!favorite) return { success: true };
+    await this.projectFavoriteRepository.remove(favorite);
+    return { success: true };
   }
 }

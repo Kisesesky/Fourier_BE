@@ -13,11 +13,11 @@ export class Team {
   @Column()
   name: string;
 
-  @Column({ type: 'enum', enum: IconType, default: IconType.EMOJI })
+  @Column({ type: 'enum', enum: IconType, default: IconType.IMAGE })
   iconType: IconType;
 
   @Column({ nullable: true })
-  iconValue?: string; 
+  iconValue?: string;
 
   @ManyToOne(() => Workspace, (workspace) => workspace.teams, { onDelete: 'CASCADE' })
   workspace: Workspace;
