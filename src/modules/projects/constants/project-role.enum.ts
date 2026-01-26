@@ -1,7 +1,7 @@
 // src/modules/projects/constants/project-rol.enum.ts
 export enum ProjectRole {
   OWNER = 'OWNER',
-  MAINTAINER = 'MAINTAINER',
+  MANAGER = 'MANAGER',
   MEMBER = 'MEMBER',
-  VIEWER = 'VIEWER',
+  GUEST = 'GUEST',
 }

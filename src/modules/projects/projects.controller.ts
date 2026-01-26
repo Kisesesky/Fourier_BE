@@ -47,11 +47,13 @@ export class ProjectsController {
   addMember(
     @Param('projectId') projectId: string,
     @Body() addProjcetMemberDto: AddProjectMemberDto,
+    @RequestUser() user: User,
   ) {
     return this.projectService.addProjectMember(
       projectId,
       addProjcetMemberDto.userId,
       addProjcetMemberDto.role,
+      user,
     );
   }
 
@@ -71,11 +73,13 @@ export class ProjectsController {
   updateMemberRole(
     @Param('projectId') projectId: string,
     @Body() updateProjectMemberDto: UpdateProjectMemberDto,
+    @RequestUser() user: User,
   ) {
     return this.projectService.updateMemberRole(
       projectId,
       updateProjectMemberDto.userId,
       updateProjectMemberDto.role,
+      user,
     );
   }
 
@@ -85,8 +89,9 @@ export class ProjectsController {
   removeMember(
     @Param('projectId') projectId: string,
     @Param('userId') userId: string,
+    @RequestUser() user: User,
   ) {
-    return this.projectService.removeMember(projectId, userId);
+    return this.projectService.removeMember(projectId, userId, user);
   }
 
   @ApiOperation({ summary: '프로젝트 수정'})
@@ -95,8 +100,9 @@ export class ProjectsController {
   updateProject(
     @Param('projectId') projectId: string,
     @Body() updateProjectDto: UpdateProjectDto,
+    @RequestUser() user: User,
   ) {
-    return this.projectService.updateProject(projectId, updateProjectDto);
+    return this.projectService.updateProject(projectId, updateProjectDto, user);
   }
 
   @ApiOperation({ summary: '프로젝트 복제' })
@@ -116,8 +122,9 @@ export class ProjectsController {
   deleteProject(
     @Param('teamId') teamId: string,
     @Param('projectId') projectId: string,
+    @RequestUser() user: User,
   ) {
-    return this.projectService.deleteProject(teamId, projectId);
+    return this.projectService.deleteProject(teamId, projectId, user);
   }
 
   @ApiOperation({ summary: '프로젝트 즐겨찾기 추가' })

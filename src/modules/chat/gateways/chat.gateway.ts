@@ -55,6 +55,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  getOnlineUserIds() {
+    return Array.from(this.onlineUsers.keys());
+  }
+
   /** 클라이언트 연결 */
   async handleConnection(client: Socket) {
     try {
@@ -70,6 +74,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // 온라인 상태 등록
       this.onlineUsers.set(user.id, client.id);
+      this.server.emit('presence.update', {
+        userId: user.id,
+        status: 'online',
+        onlineUserIds: this.getOnlineUserIds(),
+      });
+      client.emit('presence.snapshot', {
+        onlineUserIds: this.getOnlineUserIds(),
+      });
 
       // 참여하는 DM/채널 룸에 자동 입장
       const dmRooms = await this.chatService.getUserDmRoomIds(user.id);
@@ -92,6 +104,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const userId = userEntry[0];
     this.onlineUsers.delete(userId);
+    this.server.emit('presence.update', {
+      userId,
+      status: 'offline',
+      onlineUserIds: this.getOnlineUserIds(),
+    });
 
     for (const [parentId, viewers] of this.threadViewers) {
       viewers.delete(userId);

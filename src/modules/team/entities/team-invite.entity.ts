@@ -3,9 +3,9 @@ import { Entity, PrimaryGeneratedColumn, ManyToOne, Column, CreateDateColumn, Un
 import { Team } from './team.entity';
 import { User } from '../../users/entities/user.entity';
 import { TeamInviteStatus } from '../constants/team-invite-status.enum';
+import { TeamRole } from '../constants/team-role.enum';
 
 @Entity()
-@Unique(['team', 'invitee'])
 export class TeamInvite {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -23,6 +23,12 @@ export class TeamInvite {
 
   @Column({ type: 'enum', enum: TeamInviteStatus, default: TeamInviteStatus.PENDING })
   status: TeamInviteStatus;
+
+  @Column({ type: 'enum', enum: TeamRole, default: TeamRole.MEMBER })
+  role: TeamRole;
+
+  @Column({ type: 'text', nullable: true })
+  message?: string;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -6,6 +6,8 @@ import { Project } from './entities/project.entity';
 import { ProjectMember } from './entities/project-member.entity';
 import { ProjectFavorite } from './entities/project-favorite.entity';
 import { TeamMember } from '../team/entities/team-member.entity';
+import { TeamPermission } from '../team/constants/team-permission.enum';
+import { hasTeamPermission } from '../team/utils/team-permissions';
 import { User } from '../users/entities/user.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -74,10 +76,13 @@ export class ProjectsService {
     // 1. 팀 멤버 확인
     const creatorTeamMember = await this.teamMemberRepository.findOne({
       where: { team: { id: teamId }, user: { id: user.id } },
-      relations: ['team'],
+      relations: ['team', 'customRole'],
     });
     if (!creatorTeamMember) {
       throw new ForbiddenException('팀 멤버 아님');
+    }
+    if (!hasTeamPermission(creatorTeamMember, TeamPermission.PROJECT_CREATE_DELETE)) {
+      throw new ForbiddenException('프로젝트 생성 권한이 없습니다.');
     }
 
     // 2. 프로젝트 생성
@@ -202,13 +207,20 @@ export class ProjectsService {
   }
 
   /** 프로젝트 멤버 추가 */
-  async addProjectMember(projectId: string, userId: string, role: ProjectRole) {
+  async addProjectMember(projectId: string, userId: string, role: ProjectRole, actor: User) {
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
       relations: ['team', 'channels'],
     });
     if (!project) {
       throw new NotFoundException('프로젝트 없음');
+    }
+    const actorTeamMember = await this.teamMemberRepository.findOne({
+      where: { team: { id: project.team.id }, user: { id: actor.id } },
+      relations: ['customRole'],
+    });
+    if (!actorTeamMember || !hasTeamPermission(actorTeamMember, TeamPermission.PROJECT_INVITE_MEMBER)) {
+      throw new ForbiddenException('프로젝트 멤버 초대 권한이 없습니다.');
     }
 
     // 팀 멤버만 추가 가능
@@ -273,12 +285,26 @@ export class ProjectsService {
   }
 
   /** 프로젝트 멤버 역할 변경 */
-  async updateMemberRole(projectId: string, userId: string, newRole: ProjectRole) {
+  async updateMemberRole(projectId: string, userId: string, newRole: ProjectRole, actor: User) {
     const member = await this.projectMemberRepository.findOne({
       where: { project: { id: projectId }, user: { id: userId } },
     });
     if (!member) {
       throw new NotFoundException('프로젝트 멤버 없음');
+    }
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['team'],
+    });
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
+    const actorTeamMember = await this.teamMemberRepository.findOne({
+      where: { team: { id: project.team.id }, user: { id: actor.id } },
+      relations: ['customRole'],
+    });
+    if (!actorTeamMember || !hasTeamPermission(actorTeamMember, TeamPermission.PROJECT_UPDATE_ROLE)) {
+      throw new ForbiddenException('프로젝트 역할 변경 권한이 없습니다.');
     }
 
     member.role = newRole;
@@ -286,22 +312,43 @@ export class ProjectsService {
   }
 
   /** 프로젝트 멤버 제거 */
-  async removeMember(projectId: string, userId: string) {
+  async removeMember(projectId: string, userId: string, actor: User) {
     const member = await this.projectMemberRepository.findOne({
       where: { project: { id: projectId }, user: { id: userId } },
     });
     if (!member) {
       throw new NotFoundException('프로젝트 멤버 없음');
     }
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['team'],
+    });
+    if (!project) {
+      throw new NotFoundException('프로젝트 없음');
+    }
+    const actorTeamMember = await this.teamMemberRepository.findOne({
+      where: { team: { id: project.team.id }, user: { id: actor.id } },
+      relations: ['customRole'],
+    });
+    if (!actorTeamMember || !hasTeamPermission(actorTeamMember, TeamPermission.PROJECT_INVITE_MEMBER)) {
+      throw new ForbiddenException('프로젝트 멤버 삭제 권한이 없습니다.');
+    }
 
     return this.projectMemberRepository.remove(member);
   }
 
   /** 프로젝트 정보 업데이트 (이름, 설명, 아이콘) */
-  async updateProject(projectId: string, updateProjectDto: UpdateProjectDto) {
-    const project = await this.projectRepository.findOne({ where: { id: projectId } });
+  async updateProject(projectId: string, updateProjectDto: UpdateProjectDto, actor: User) {
+    const project = await this.projectRepository.findOne({ where: { id: projectId }, relations: ['team'] });
     if (!project) {
       throw new NotFoundException('프로젝트 없음');
+    }
+    const actorTeamMember = await this.teamMemberRepository.findOne({
+      where: { team: { id: project.team?.id }, user: { id: actor.id } },
+      relations: ['customRole'],
+    });
+    if (!actorTeamMember || !hasTeamPermission(actorTeamMember, TeamPermission.PROJECT_CREATE_DELETE)) {
+      throw new ForbiddenException('프로젝트 수정 권한이 없습니다.');
     }
 
     if (updateProjectDto.name !== undefined) project.name = updateProjectDto.name;
@@ -334,12 +381,19 @@ export class ProjectsService {
   }
 
   /** 프로젝트 삭제 */
-  async deleteProject(teamId: string, projectId: string) {
+  async deleteProject(teamId: string, projectId: string, actor: User) {
     const project = await this.projectRepository.findOne({
       where: { id: projectId, team: { id: teamId } },
     });
     if (!project) {
       throw new NotFoundException('프로젝트 없음');
+    }
+    const actorTeamMember = await this.teamMemberRepository.findOne({
+      where: { team: { id: teamId }, user: { id: actor.id } },
+      relations: ['customRole'],
+    });
+    if (!actorTeamMember || !hasTeamPermission(actorTeamMember, TeamPermission.PROJECT_CREATE_DELETE)) {
+      throw new ForbiddenException('프로젝트 삭제 권한이 없습니다.');
     }
 
     // 채널 멤버 → 채널 순서로 정리 (FK 제약 회피)

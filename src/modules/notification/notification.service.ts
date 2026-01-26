@@ -69,4 +69,17 @@ export class NotificationService {
       })
       .execute();
   }
+
+  async markFriendRequestHandled(memberId: string, userId: string) {
+    await this.notificationrepository
+      .createQueryBuilder()
+      .update()
+      .set({ read: true })
+      .where('userId = :userId', { userId })
+      .andWhere('type = :type', { type: NotificationType.FRIEND_REQUEST })
+      .andWhere(`payload @> :payload`, {
+        payload: JSON.stringify({ memberId }),
+      })
+      .execute();
+  }
 }

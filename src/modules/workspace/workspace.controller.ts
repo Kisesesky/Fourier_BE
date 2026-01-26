@@ -26,4 +26,13 @@ export class WorkspaceController {
   ) {
     return this.workspaceService.getMyWorkspace(user);
   }
+
+  @ApiOperation({ summary: '내 워크스페이스 목록' })
+  @ApiOkResponse({ type: [WorkspaceResponseDto] })
+  @Get('my')
+  getMyWorkspaces(
+    @RequestUser() user: User
+  ) {
+    return this.workspaceService.getMyWorkspaces(user);
+  }
 }

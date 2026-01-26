@@ -2,6 +2,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, ManyToOne } from 'typeorm';
 import { Team } from '../../team/entities/team.entity';
 import { User } from 'src/modules/users/entities/user.entity';
+import { WorkspaceMember } from './workspace-member.entity';
 
 @Entity()
 export class Workspace {
@@ -16,6 +17,9 @@ export class Workspace {
 
   @OneToMany(() => Team, (team) => team.workspace)
   teams: Team[];
+
+  @OneToMany(() => WorkspaceMember, (member) => member.workspace)
+  members: WorkspaceMember[];
 
   @CreateDateColumn()
   createdAt: Date;

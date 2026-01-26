@@ -16,6 +16,8 @@ import { ReadDmMessageDto } from './dto/read-dm-message.dto';
 import { GetMessageContextDto } from './dto/get-message-context.dto';
 import { mapMessageToResponse } from './utils/message.mapper';
 import { SendThreadMessageDto } from './dto/send-thread-message.dto';
+import { CreateDmRoomDto } from './dto/create-dm-room.dto';
+import { ChatGateway } from './gateways/chat.gateway';
 
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
@@ -23,7 +25,8 @@ import { SendThreadMessageDto } from './dto/send-thread-message.dto';
 @Controller('chat')
 export class ChatController {
   constructor(
-    private readonly chatService: ChatService
+    private readonly chatService: ChatService,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   @ApiOperation({ summary: '채널에서 메시지 보내기'})
@@ -81,6 +84,17 @@ export class ChatController {
       await this.chatService.sendDM(user, sendDmMessageDto),
       user.id,
     );
+  }
+
+  @ApiOperation({ summary: 'DM 룸 생성/조회' })
+  @Post('dm/room')
+  async getOrCreateDmRoom(
+    @RequestUser() user: User,
+    @Body() createDmRoomDto: CreateDmRoomDto,
+  ) {
+    const filtered = createDmRoomDto.userIds.filter((id) => id !== user.id);
+    const room = await this.chatService.getOrCreateDmRoom(filtered, user);
+    return { id: room.id };
   }
 
   @ApiOperation({ summary: 'DM 메시지 목록'})
@@ -149,5 +163,11 @@ export class ChatController {
     @Query() getMessageContextDto: GetMessageContextDto,
   ) {
     return this.chatService.getMessageContext(user, getMessageContextDto);
+  }
+
+  @ApiOperation({ summary: '온라인 유저 목록' })
+  @Get('presence')
+  async getPresence() {
+    return { onlineUserIds: this.chatGateway.getOnlineUserIds() };
   }
 }

@@ -3,6 +3,7 @@ import { Entity, PrimaryGeneratedColumn, ManyToOne, Column, CreateDateColumn, Un
 import { Team } from './team.entity';
 import { User } from '../../users/entities/user.entity';
 import { TeamRole } from '../constants/team-role.enum';
+import { TeamRolePolicy } from './team-role-policy.entity';
 
 @Entity()
 @Unique(['team', 'user'])
@@ -18,6 +19,9 @@ export class TeamMember {
 
   @Column({ type: 'enum', enum: TeamRole, default: TeamRole.MEMBER })
   role: TeamRole;
+
+  @ManyToOne(() => TeamRolePolicy, { nullable: true, onDelete: 'SET NULL' })
+  customRole?: TeamRolePolicy | null;
 
   @CreateDateColumn()
   joinedAt: Date;

@@ -34,6 +34,7 @@ export class ProjectAccessGuard implements CanActivate {
 
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
+      relations: ['team'],
     });
 
     if (!project) {
@@ -41,7 +42,7 @@ export class ProjectAccessGuard implements CanActivate {
     }
 
     if (project.status === ProjectStatus.DRAFT) {
-      if (member.role !== ProjectRole.OWNER && member.role !== ProjectRole.MAINTAINER) {
+      if (member.role !== ProjectRole.OWNER && member.role !== ProjectRole.MANAGER) {
         throw new ForbiddenException('드래프트 프로젝트 접근 권한 없음');
       }
     }

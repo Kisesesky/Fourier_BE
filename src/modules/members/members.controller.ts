@@ -70,18 +70,30 @@ export class MembersController {
   @ApiOperation({ summary: '친구 리스트' })
   @Get('list')
   async getMembers(
-    @RequestUser() user: User
+    @RequestUser() user: User,
+    @Query('workspaceId') workspaceId?: string,
   ) {
-    const Members = await this.membersService.getMembers(user.id);
+    const Members = await this.membersService.getMembers(user.id, workspaceId);
     return { success: true, data: Members };
   }
 
   @ApiOperation({ summary: '친구 요청 목록' })
   @Get('requests')
   async getPendingRequests(
-    @RequestUser() user: User
+    @RequestUser() user: User,
+    @Query('workspaceId') workspaceId?: string,
   ) {
-    const requests = await this.membersService.getPendingRequests(user.id);
+    const requests = await this.membersService.getPendingRequests(user.id, workspaceId);
+    return { success: true, data: requests };
+  }
+
+  @ApiOperation({ summary: '보낸 친구 요청 목록' })
+  @Get('requests/sent')
+  async getSentRequests(
+    @RequestUser() user: User,
+    @Query('workspaceId') workspaceId?: string,
+  ) {
+    const requests = await this.membersService.getSentRequests(user.id, workspaceId);
     return { success: true, data: requests };
   }
 
@@ -91,7 +103,7 @@ export class MembersController {
     @RequestUser() user: User,
     @Query() query: SearchMembersDto,
   ) {
-    const results = await this.membersService.searchMembers(user.id, query.keyword);
+    const results = await this.membersService.searchMembers(user.id, query.keyword, query.workspaceId);
     return { success: true, data: results };
   }
 }
