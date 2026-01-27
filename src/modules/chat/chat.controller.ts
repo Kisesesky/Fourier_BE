@@ -170,4 +170,19 @@ export class ChatController {
   async getPresence() {
     return { onlineUserIds: this.chatGateway.getOnlineUserIds() };
   }
+
+  @ApiOperation({ summary: '프로젝트 채널 목록' })
+  @Get('channels')
+  async getChannels(
+    @RequestUser() user: User,
+    @Query('projectId') projectId: string,
+  ) {
+    const channels = await this.chatService.getProjectChannels(projectId, user.id);
+    return channels.map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      projectId,
+      isDefault: channel.isDefault,
+    }));
+  }
 }

@@ -251,6 +251,18 @@ export class ChatService {
     return rooms.map(room => room.id);
   }
 
+  async getProjectChannels(projectId: string, userId: string): Promise<Channel[]> {
+    const channels = await this.channelRepository
+      .createQueryBuilder('channel')
+      .innerJoin('channel.project', 'project')
+      .innerJoin('project.members', 'member')
+      .where('project.id = :projectId', { projectId })
+      .andWhere('member.userId = :userId', { userId })
+      .orderBy('channel.createdAt', 'ASC')
+      .getMany();
+    return channels;
+  }
+
   async findScopedMessageById(
     messageId: string,
   ): Promise<ScopedMessage<ChannelMessage | DmMessage>> {
