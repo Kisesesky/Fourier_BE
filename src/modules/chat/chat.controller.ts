@@ -18,6 +18,8 @@ import { mapMessageToResponse } from './utils/message.mapper';
 import { SendThreadMessageDto } from './dto/send-thread-message.dto';
 import { CreateDmRoomDto } from './dto/create-dm-room.dto';
 import { ChatGateway } from './gateways/chat.gateway';
+import { GetChannelPreferencesDto, SaveChannelPreferencesDto } from './dto/channel-preferences.dto';
+import { CreateChannelDto } from './dto/create-channel.dto';
 
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
@@ -36,10 +38,10 @@ export class ChatController {
     @RequestUser() user: User,
     @Body() sendChannelMessageDto: SendChannelMessageDto
   ) {
-    return mapMessageToResponse(
-      await this.chatService.sendChannelMessage(user, sendChannelMessageDto),
-      user.id,
-    );
+    const message = await this.chatService.sendChannelMessage(user, sendChannelMessageDto);
+    const mapped = mapMessageToResponse(message, user.id);
+    this.chatGateway.emitChannelMessageCreated(sendChannelMessageDto.channelId, mapped);
+    return mapped;
   }
 
   @ApiOperation({ summary: '채널에서 메시지 목록'})
@@ -71,6 +73,16 @@ export class ChatController {
     return {
       count: await this.chatService.getChannelUnreadCount(unreadCountDto.id, user.id)
     };
+  }
+
+  @ApiOperation({ summary: '채널 핀 메시지 목록' })
+  @Get('channel/pins')
+  async getChannelPins(
+    @RequestUser() user: User,
+    @Query('channelId') channelId: string,
+  ) {
+    const pins = await this.chatService.getPinnedMessages(channelId);
+    return { messageIds: pins.map((p) => p.message.id) };
   }
 
   @ApiOperation({ summary: 'DM 보내기'})
@@ -145,15 +157,36 @@ export class ChatController {
     @RequestUser() user: User,
     @Body() sendThreadMessageDto: SendThreadMessageDto,
   ): Promise<MessageResponseDto> {
-    return mapMessageToResponse(
-      await this.chatService.sendThreadMessage(
-        user,
-        sendThreadMessageDto.threadParentId,
-        sendThreadMessageDto.content,
-        sendThreadMessageDto.fileIds ?? []
-      ),
-      user.id,
+    const reply = await this.chatService.sendThreadMessage(
+      user,
+      sendThreadMessageDto.threadParentId,
+      sendThreadMessageDto.content,
+      sendThreadMessageDto.fileIds ?? []
     );
+    const mapped = mapMessageToResponse(reply, user.id);
+
+    const scopedParent = await this.chatService.findScopedMessageById(sendThreadMessageDto.threadParentId);
+    if (scopedParent.scope === 'CHANNEL') {
+      const parentMessage = scopedParent.message as any;
+      const channelId = parentMessage.channel?.id;
+      if (channelId) {
+        this.chatGateway.emitThreadCreated(channelId, {
+          parentMessageId: sendThreadMessageDto.threadParentId,
+          message: mapped,
+        });
+        const unreadCount = await this.chatService.getThreadUnreadCount(sendThreadMessageDto.threadParentId, user.id);
+        this.chatGateway.emitThreadMeta(channelId, {
+          parentMessageId: sendThreadMessageDto.threadParentId,
+          thread: {
+            replyCount: parentMessage.threadCount,
+            unreadCount,
+            lastReplyAt: parentMessage.lastThreadAt,
+          },
+        });
+      }
+    }
+
+    return mapped;
   }
 
   @ApiOperation({ summary: '메시지 컨텍스트 조회' })
@@ -163,6 +196,19 @@ export class ChatController {
     @Query() getMessageContextDto: GetMessageContextDto,
   ) {
     return this.chatService.getMessageContext(user, getMessageContextDto);
+  }
+
+  @ApiOperation({ summary: '저장한 메시지 목록' })
+  @Get('messages/saved')
+  async getSavedMessages(
+    @RequestUser() user: User,
+  ) {
+    const saved = await this.chatService.getSavedMessages(user);
+    return {
+      messageIds: saved
+        .map((s) => s.channelMessage?.id || s.dmMessage?.id)
+        .filter(Boolean),
+    };
   }
 
   @ApiOperation({ summary: '온라인 유저 목록' })
@@ -184,5 +230,55 @@ export class ChatController {
       projectId,
       isDefault: channel.isDefault,
     }));
+  }
+
+  @ApiOperation({ summary: '프로젝트 채널 생성' })
+  @Post('channels')
+  async createChannel(
+    @RequestUser() user: User,
+    @Body() createChannelDto: CreateChannelDto,
+  ) {
+    const { channel, memberIds } = await this.chatService.createChannel(
+      createChannelDto.projectId,
+      user,
+      createChannelDto.name,
+      createChannelDto.memberIds ?? [],
+    );
+    return {
+      id: channel.id,
+      name: channel.name,
+      projectId: createChannelDto.projectId,
+      isDefault: channel.isDefault,
+      memberIds,
+    };
+  }
+
+  @ApiOperation({ summary: '채널 뷰/보관/핀 선호도 조회' })
+  @Get('channel/preferences')
+  async getChannelPreferences(
+    @RequestUser() user: User,
+    @Query() getChannelPreferencesDto: GetChannelPreferencesDto,
+  ) {
+    return this.chatService.getChannelPreferences(getChannelPreferencesDto.projectId, user);
+  }
+
+  @ApiOperation({ summary: '채널 뷰/보관/핀 선호도 저장' })
+  @Post('channel/preferences')
+  async saveChannelPreferences(
+    @RequestUser() user: User,
+    @Body() saveChannelPreferencesDto: SaveChannelPreferencesDto,
+  ) {
+    const saved = await this.chatService.saveChannelPreferences(
+      saveChannelPreferencesDto.projectId,
+      user,
+      {
+        pinnedChannelIds: saveChannelPreferencesDto.pinnedChannelIds,
+        archivedChannelIds: saveChannelPreferencesDto.archivedChannelIds,
+      },
+    );
+    return {
+      pinnedChannelIds: saved.pinnedChannelIds ?? [],
+      archivedChannelIds: saved.archivedChannelIds ?? [],
+    };
   }
 }

@@ -22,6 +22,10 @@ import { SavedMessage } from './entities/saved-message.entity';
 import { LinkPreview } from './entities/link-preview.entity';
 import { LinkPreviewService } from './services/link-preview.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ChannelPreference } from './entities/channel-preference.entity';
+import { Project } from '../projects/entities/project.entity';
+import { ChannelMember } from './entities/channel-member.entity';
+import { ProjectMember } from '../projects/entities/project-member.entity';
 
 @Module({
   imports: [
@@ -34,12 +38,16 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
       ChannelMessage,
       ChannelRead,
       ChannelPinnedMessage,
+      ChannelPreference,
+      ChannelMember,
       ThreadRead,
       MessageFile,
       MessageReaction,
       MessageSearch,
       SavedMessage,
       LinkPreview,
+      Project,
+      ProjectMember,
     ]),
     AppConfigModule,
     FilesModule,

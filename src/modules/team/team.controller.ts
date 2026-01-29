@@ -10,6 +10,8 @@ import { TeamManageGuard } from './guards/team-manage.guard';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InviteTeamMemberDto } from './dto/Invite-team-member.dto';
 import { UpdateTeamMemberRoleDto } from './dto/update-team-member-role.dto';
+import { UpdateTeamMemberNicknameDto } from './dto/update-team-member-nickname.dto';
+import { UpdateTeamMemberAvatarDto } from './dto/update-team-member-avatar.dto';
 import { CreateTeamRoleDto } from './dto/create-team-role.dto';
 import { UpdateTeamRoleDto } from './dto/update-team-role.dto';
 import { TeamResponseDto } from './dto/team-response.dto';
@@ -158,6 +160,48 @@ export class TeamController {
     @RequestUser() user: User,
   ) {
     return this.teamService.updateMemberRole(teamId, user, memberId, updateTeamMemberRoleDto.role);
+  }
+
+  @ApiOperation({ summary: '팀 멤버 닉네임 변경' })
+  @ApiOkResponse({
+    schema: {
+      example: { userId: 'user-uuid', nickname: 'team-별명' },
+    },
+  })
+  @Patch(':teamId/members/:memberId/nickname')
+  updateMemberNickname(
+    @Param('teamId') teamId: string,
+    @Param('memberId') memberId: string,
+    @Body() updateTeamMemberNicknameDto: UpdateTeamMemberNicknameDto,
+    @RequestUser() user: User,
+  ) {
+    return this.teamService.updateMemberNickname(
+      teamId,
+      user,
+      memberId,
+      updateTeamMemberNicknameDto.nickname,
+    );
+  }
+
+  @ApiOperation({ summary: '팀 멤버 아바타 변경' })
+  @ApiOkResponse({
+    schema: {
+      example: { userId: 'user-uuid', avatarUrl: 'https://cdn.example.com/avatar.png' },
+    },
+  })
+  @Patch(':teamId/members/:memberId/avatar')
+  updateMemberAvatar(
+    @Param('teamId') teamId: string,
+    @Param('memberId') memberId: string,
+    @Body() updateTeamMemberAvatarDto: UpdateTeamMemberAvatarDto,
+    @RequestUser() user: User,
+  ) {
+    return this.teamService.updateMemberAvatar(
+      teamId,
+      user,
+      memberId,
+      updateTeamMemberAvatarDto.avatarUrl,
+    );
   }
 
   @ApiOperation({ summary: '팀 멤버 커스텀 역할 지정' })

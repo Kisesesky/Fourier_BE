@@ -7,6 +7,7 @@ import { ChannelMessage } from './entities/channel-message.entity';
 import { DmRoom } from './entities/dm-room.entity';
 import { DmMessage } from './entities/dm-message.entity';
 import { User } from '../users/entities/user.entity';
+import { Project } from '../projects/entities/project.entity';
 import { AppConfigService } from 'src/config/app/config.service';
 import * as jwt from 'jsonwebtoken';
 import { MessageType } from './constants/message-type.enum';
@@ -32,6 +33,9 @@ import { extractFirstUrl } from './utils/extract-url-util';
 import { LinkPreview } from './entities/link-preview.entity';
 import { LinkPreviewService } from './services/link-preview.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ChannelPreference } from './entities/channel-preference.entity';
+import { ChannelMember } from './entities/channel-member.entity';
+import { ProjectMember } from '../projects/entities/project-member.entity';
 
 @Injectable()
 export class ChatService {
@@ -46,6 +50,12 @@ export class ChatService {
     private readonly channelReadRepository: Repository<ChannelRead>,
     @InjectRepository(ChannelPinnedMessage)
     private readonly channelPinnedRepository: Repository<ChannelPinnedMessage>,
+    @InjectRepository(ChannelPreference)
+    private readonly channelPreferenceRepository: Repository<ChannelPreference>,
+    @InjectRepository(ChannelMember)
+    private readonly channelMemberRepository: Repository<ChannelMember>,
+    @InjectRepository(ProjectMember)
+    private readonly projectMemberRepository: Repository<ProjectMember>,
     @InjectRepository(DmRoom)
     private readonly dmRoomRepository: Repository<DmRoom>,
     @InjectRepository(DmMessage)
@@ -56,6 +66,8 @@ export class ChatService {
     private readonly usersRepository: Repository<User>,
     @InjectRepository(MessageFile)
     private readonly messageFileRepository: Repository<MessageFile>,
+    @InjectRepository(Project)
+    private readonly projectRepository: Repository<Project>,
     private readonly filesService: FilesService,
     @InjectRepository(MessageReaction)
     private readonly messageReactionRepository: Repository<MessageReaction>,
@@ -263,6 +275,103 @@ export class ChatService {
     return channels;
   }
 
+  async createChannel(
+    projectId: string,
+    user: User,
+    name: string,
+    memberIds: string[] = [],
+  ) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      throw new BadRequestException('채널 이름이 필요합니다.');
+    }
+    await this.assertProjectMember(projectId, user.id);
+    const project = await this.projectRepository.findOne({ where: { id: projectId } });
+    if (!project) {
+      throw new NotFoundException('프로젝트를 찾을 수 없습니다.');
+    }
+    const channel = await this.channelRepository.save(
+      this.channelRepository.create({
+        name: trimmed,
+        project,
+        isDefault: false,
+      }),
+    );
+
+    const uniqueIds = Array.from(new Set([user.id, ...(memberIds || [])]));
+    const members = await this.projectMemberRepository.find({
+      where: { project: { id: projectId }, user: { id: In(uniqueIds) } },
+      relations: ['user'],
+    });
+    if (members.length > 0) {
+      await this.channelMemberRepository.save(
+        members.map((member) =>
+          this.channelMemberRepository.create({
+            channel,
+            user: member.user,
+          }),
+        ),
+      );
+    }
+
+    return {
+      channel,
+      memberIds: members.map((member) => member.user.id),
+    };
+  }
+
+  private async assertProjectMember(projectId: string, userId: string) {
+    const count = await this.projectRepository
+      .createQueryBuilder('project')
+      .innerJoin('project.members', 'member')
+      .where('project.id = :projectId', { projectId })
+      .andWhere('member.userId = :userId', { userId })
+      .getCount();
+    if (count === 0) {
+      throw new ForbiddenException('프로젝트 접근 권한이 없습니다.');
+    }
+  }
+
+  async getChannelPreferences(projectId: string, user: User) {
+    await this.assertProjectMember(projectId, user.id);
+    const pref = await this.channelPreferenceRepository.findOne({
+      where: {
+        project: { id: projectId },
+        user: { id: user.id },
+      },
+    });
+    return {
+      pinnedChannelIds: pref?.pinnedChannelIds ?? [],
+      archivedChannelIds: pref?.archivedChannelIds ?? [],
+    };
+  }
+
+  async saveChannelPreferences(
+    projectId: string,
+    user: User,
+    payload: { pinnedChannelIds: string[]; archivedChannelIds: string[] },
+  ) {
+    await this.assertProjectMember(projectId, user.id);
+    const pinnedChannelIds = Array.from(new Set(payload.pinnedChannelIds ?? []));
+    const archivedChannelIds = Array.from(new Set(payload.archivedChannelIds ?? []));
+    const existing = await this.channelPreferenceRepository.findOne({
+      where: { project: { id: projectId }, user: { id: user.id } },
+    });
+    if (existing) {
+      existing.pinnedChannelIds = pinnedChannelIds;
+      existing.archivedChannelIds = archivedChannelIds;
+      await this.channelPreferenceRepository.save(existing);
+      return existing;
+    }
+    const created = this.channelPreferenceRepository.create({
+      project: { id: projectId } as Project,
+      user: { id: user.id } as User,
+      pinnedChannelIds,
+      archivedChannelIds,
+    });
+    return this.channelPreferenceRepository.save(created);
+  }
+
   async findScopedMessageById(
     messageId: string,
   ): Promise<ScopedMessage<ChannelMessage | DmMessage>> {
@@ -422,8 +531,11 @@ export class ChatService {
     const qb = this.channelMessageRepository
       .createQueryBuilder('message')
       .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.threadParent', 'threadParent')
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
+      .leftJoinAndSelect('message.reactions', 'reaction')
+      .leftJoinAndSelect('reaction.user', 'reactionUser')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
       .where('message.channelId = :channelId', { channelId })
       .orderBy('message.createdAt', 'DESC')
@@ -653,7 +765,7 @@ export class ChatService {
   ) {
     const replies = await this.channelMessageRepository.find({
       where: { threadParent: { id: threadParentId } },
-      relations: ['sender', 'files', 'files.file'],
+      relations: ['sender', 'threadParent', 'files', 'files.file', 'reactions', 'reactions.user'],
       order: { createdAt: 'ASC' },
     });
 

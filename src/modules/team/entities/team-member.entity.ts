@@ -23,6 +23,12 @@ export class TeamMember {
   @ManyToOne(() => TeamRolePolicy, { nullable: true, onDelete: 'SET NULL' })
   customRole?: TeamRolePolicy | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  nickname?: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  avatarUrl?: string | null;
+
   @CreateDateColumn()
   joinedAt: Date;
 }

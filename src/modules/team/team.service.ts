@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -119,9 +120,12 @@ export class TeamService {
 
     return team.members.map((member) => ({
       userId: member.user.id,
-      name: member.user.displayName ?? member.user.name,
+      name: member.user.name,
+      displayName: member.user.displayName ?? member.user.name,
+      nickname: member.nickname ?? null,
       email: member.user.email,
       avatarUrl: member.user.avatarUrl,
+      teamAvatarUrl: member.avatarUrl ?? null,
       role: member.role,
       customRoleId: member.customRole?.id ?? null,
       customRoleName: member.customRole?.name ?? null,
@@ -402,6 +406,89 @@ export class TeamService {
     return {
       userId: targetMember.user.id,
       role: targetMember.role,
+    };
+  }
+
+  async updateMemberNickname(teamId: string, actor: User, targetUserId: string, nickname?: string) {
+    const actorMember = await this.teamMemberRepository.findOne({
+      where: {
+        team: { id: teamId },
+        user: { id: actor.id },
+      },
+      relations: ['customRole'],
+    });
+
+    if (!actorMember) {
+      throw new ForbiddenException('팀 멤버만 닉네임을 변경할 수 있습니다.');
+    }
+
+    const isSelf = actor.id === targetUserId;
+    if (!isSelf && !hasTeamPermission(actorMember, TeamPermission.TEAM_UPDATE_ROLE)) {
+      throw new ForbiddenException('팀 관리자만 닉네임을 변경할 수 있습니다.');
+    }
+
+    const targetMember = await this.teamMemberRepository.findOne({
+      where: {
+        team: { id: teamId },
+        user: { id: targetUserId },
+      },
+      relations: ['user'],
+    });
+
+    if (!targetMember) {
+      throw new NotFoundException('멤버를 찾을 수 없습니다.');
+    }
+
+    const trimmed = nickname?.trim() ?? '';
+    if (trimmed.length > 32) {
+      throw new BadRequestException('닉네임은 최대 32자까지 가능합니다.');
+    }
+    targetMember.nickname = trimmed.length ? trimmed : null;
+    await this.teamMemberRepository.save(targetMember);
+
+    return {
+      userId: targetMember.user.id,
+      nickname: targetMember.nickname ?? null,
+    };
+  }
+
+  async updateMemberAvatar(teamId: string, actor: User, targetUserId: string, avatarUrl?: string) {
+    const actorMember = await this.teamMemberRepository.findOne({
+      where: {
+        team: { id: teamId },
+        user: { id: actor.id },
+      },
+      relations: ['customRole'],
+    });
+
+    if (!actorMember) {
+      throw new ForbiddenException('팀 멤버만 아바타를 변경할 수 있습니다.');
+    }
+
+    const isSelf = actor.id === targetUserId;
+    if (!isSelf && !hasTeamPermission(actorMember, TeamPermission.TEAM_UPDATE_ROLE)) {
+      throw new ForbiddenException('팀 관리자만 아바타를 변경할 수 있습니다.');
+    }
+
+    const targetMember = await this.teamMemberRepository.findOne({
+      where: {
+        team: { id: teamId },
+        user: { id: targetUserId },
+      },
+      relations: ['user'],
+    });
+
+    if (!targetMember) {
+      throw new NotFoundException('멤버를 찾을 수 없습니다.');
+    }
+
+    const trimmed = avatarUrl?.trim() ?? '';
+    targetMember.avatarUrl = trimmed.length ? trimmed : null;
+    await this.teamMemberRepository.save(targetMember);
+
+    return {
+      userId: targetMember.user.id,
+      avatarUrl: targetMember.avatarUrl ?? null,
     };
   }
 

@@ -55,6 +55,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  emitChannelMessageCreated(channelId: string, payload: any) {
+    this.emitMessageEvent(`channel:${channelId}`, 'created', payload);
+  }
+
+  emitChannelMessageUpdated(channelId: string, payload: any) {
+    this.emitMessageEvent(`channel:${channelId}`, 'updated', payload);
+  }
+
+  emitChannelMessageDeleted(channelId: string, messageId: string) {
+    this.emitMessageEvent(`channel:${channelId}`, 'deleted', { messageId });
+  }
+
+  emitChannelReaction(channelId: string, payload: { messageId: string; emoji: string; userId: string; action: string }) {
+    this.emitMessageEvent(`channel:${channelId}`, 'reaction', payload);
+  }
+
+  emitThreadCreated(channelId: string, payload: any) {
+    this.emitMessageEvent(`channel:${channelId}`, 'thread_created', payload);
+  }
+
+  emitThreadMeta(channelId: string, payload: any) {
+    this.emitMessageEvent(`channel:${channelId}`, 'thread_meta', payload);
+  }
+
   getOnlineUserIds() {
     return Array.from(this.onlineUsers.keys());
   }
