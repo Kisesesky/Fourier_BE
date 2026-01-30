@@ -1,5 +1,5 @@
 // src/modules/issue/issue.controller.ts
-import { Controller, Post, Param, Body, Patch, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Param, Body, Patch, Get, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { IssuesService } from './issues.service';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
 import { User } from '../users/entities/user.entity';
@@ -133,5 +133,18 @@ export class IssuesController {
     @Param('projectId') projectId: string,
   ) {
     return this.issuesService.getProjectGantt(projectId);
+  }
+
+  @ApiOperation({ summary: '이슈 분석 집계' })
+  @Get('analytics')
+  async getIssueAnalytics(
+    @Param('projectId') projectId: string,
+    @Query('granularity') granularity: 'hourly' | 'daily' | 'monthly',
+    @Query('date') date?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    if (!granularity) throw new BadRequestException('granularity is required');
+    return this.issuesService.getIssueAnalytics(projectId, { granularity, date, month, year });
   }
 }

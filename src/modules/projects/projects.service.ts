@@ -1,5 +1,5 @@
 // src/modules/project/project.service.ts
-import { Injectable, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Project } from './entities/project.entity';
@@ -282,6 +282,57 @@ export class ProjectsService {
       avatarUrl: member.user.avatarUrl,
       role: member.role,
     }));
+  }
+
+  async getMemberAnalytics(
+    projectId: string,
+    opts: { granularity: 'hourly' | 'daily' | 'monthly'; date?: string; month?: string; year?: string },
+  ) {
+    const { granularity, date, month, year } = opts;
+    let start: Date;
+    let end: Date;
+    let counts: number[] = [];
+
+    if (granularity === 'hourly') {
+      if (!date) throw new BadRequestException('date is required for hourly');
+      const parsed = new Date(`${date}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) throw new BadRequestException('invalid date format');
+      start = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      end = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate() + 1);
+      counts = Array.from({ length: 24 }, () => 0);
+    } else if (granularity === 'daily') {
+      if (!month) throw new BadRequestException('month is required for daily');
+      const [y, m] = month.split('-').map((v) => Number(v));
+      if (!y || !m) throw new BadRequestException('invalid month format');
+      start = new Date(y, m - 1, 1);
+      end = new Date(y, m, 1);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      counts = Array.from({ length: daysInMonth }, () => 0);
+    } else {
+      if (!year) throw new BadRequestException('year is required for monthly');
+      const y = Number(year);
+      if (!y) throw new BadRequestException('invalid year format');
+      start = new Date(y, 0, 1);
+      end = new Date(y + 1, 0, 1);
+      counts = Array.from({ length: 12 }, () => 0);
+    }
+
+    const rows = await this.projectMemberRepository
+      .createQueryBuilder('member')
+      .where('member.projectId = :projectId', { projectId })
+      .andWhere('member.joinedAt >= :start', { start })
+      .andWhere('member.joinedAt < :end', { end })
+      .select(['member.joinedAt'])
+      .getMany();
+
+    rows.forEach((row) => {
+      const dt = new Date(row.joinedAt);
+      if (granularity === 'hourly') counts[dt.getHours()] += 1;
+      else if (granularity === 'daily') counts[dt.getDate() - 1] += 1;
+      else counts[dt.getMonth()] += 1;
+    });
+
+    return { granularity, counts };
   }
 
   /** 프로젝트 멤버 역할 변경 */

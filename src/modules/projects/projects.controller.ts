@@ -1,5 +1,5 @@
 // src/modules/project/project.controller.ts
-import { Controller, Post, Param, Body, UseGuards, Get, Patch, Delete } from '@nestjs/common';
+import { Controller, Post, Param, Body, UseGuards, Get, Patch, Delete, Query, BadRequestException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ProjectAccessGuard } from './guards/project-access.guard';
@@ -65,6 +65,20 @@ export class ProjectsController {
     @Param('projectId') projectId: string
   ) {
     return this.projectService.getProjectMembers(projectId);
+  }
+
+  @ApiOperation({ summary: '프로젝트 멤버 분석 집계'})
+  @UseGuards(ProjectAccessGuard)
+  @Get(':projectId/members/analytics')
+  getMemberAnalytics(
+    @Param('projectId') projectId: string,
+    @Query('granularity') granularity: 'hourly' | 'daily' | 'monthly',
+    @Query('date') date?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    if (!granularity) throw new BadRequestException('granularity is required');
+    return this.projectService.getMemberAnalytics(projectId, { granularity, date, month, year });
   }
 
   @ApiOperation({ summary: '프로젝트 멤버 롤 수정'})

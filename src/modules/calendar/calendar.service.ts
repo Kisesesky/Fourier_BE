@@ -1,5 +1,5 @@
 // src/modules/calendar/calendar.service.ts
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CalendarEvent } from './entities/calendar-event.entity';
@@ -85,6 +85,59 @@ export class CalendarService {
     });
 
     return events.map(event => mapEventToResponse(event));
+  }
+
+  async getEventAnalytics(
+    projectId: string,
+    user: User,
+    opts: { granularity: 'hourly' | 'daily' | 'monthly'; date?: string; month?: string; year?: string },
+  ) {
+    await this.checkProjectMember(projectId, user.id);
+    const { granularity, date, month, year } = opts;
+    let start: Date;
+    let end: Date;
+    let counts: number[] = [];
+
+    if (granularity === 'hourly') {
+      if (!date) throw new BadRequestException('date is required for hourly');
+      const parsed = new Date(`${date}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) throw new BadRequestException('invalid date format');
+      start = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      end = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate() + 1);
+      counts = Array.from({ length: 24 }, () => 0);
+    } else if (granularity === 'daily') {
+      if (!month) throw new BadRequestException('month is required for daily');
+      const [y, m] = month.split('-').map((v) => Number(v));
+      if (!y || !m) throw new BadRequestException('invalid month format');
+      start = new Date(y, m - 1, 1);
+      end = new Date(y, m, 1);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      counts = Array.from({ length: daysInMonth }, () => 0);
+    } else {
+      if (!year) throw new BadRequestException('year is required for monthly');
+      const y = Number(year);
+      if (!y) throw new BadRequestException('invalid year format');
+      start = new Date(y, 0, 1);
+      end = new Date(y + 1, 0, 1);
+      counts = Array.from({ length: 12 }, () => 0);
+    }
+
+    const rows = await this.calendarEventRepository
+      .createQueryBuilder('event')
+      .where('event.projectId = :projectId', { projectId })
+      .andWhere('event.createdAt >= :start', { start })
+      .andWhere('event.createdAt < :end', { end })
+      .select(['event.createdAt'])
+      .getMany();
+
+    rows.forEach((row) => {
+      const dt = new Date(row.createdAt);
+      if (granularity === 'hourly') counts[dt.getHours()] += 1;
+      else if (granularity === 'daily') counts[dt.getDate() - 1] += 1;
+      else counts[dt.getMonth()] += 1;
+    });
+
+    return { granularity, counts };
   }
 
   async getDefaultCategory(projectId: string): Promise<CalendarCategory> {
@@ -183,10 +236,22 @@ export class CalendarService {
   ) {
     await this.checkProjectMember(projectId, user.id);
 
-    const categories = await this.calendarCategoryRepository.find({
+    let categories = await this.calendarCategoryRepository.find({
       where: { project: { id: projectId }, isActive: true },
       order: { createdAt: 'ASC' },
     });
+
+    if (categories.length === 0) {
+      const defaults = [
+        { name: '기본 캘린더', color: '#3788d8', isDefault: true },
+      ];
+      categories = await this.calendarCategoryRepository.save(
+        defaults.map((c) => ({
+          ...c,
+          project: { id: projectId },
+        })),
+      );
+    }
 
     return categories.map(mapCategory)
   }

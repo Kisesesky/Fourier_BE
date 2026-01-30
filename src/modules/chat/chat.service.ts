@@ -84,6 +84,70 @@ export class ChatService {
     private readonly appConfigService: AppConfigService,
   ) {}
 
+  async getMessageAnalytics(
+    projectId: string,
+    userId: string,
+    opts: { granularity: 'hourly' | 'daily' | 'monthly'; date?: string; month?: string; year?: string },
+  ) {
+    const membership = await this.projectMemberRepository.findOne({
+      where: { project: { id: projectId }, user: { id: userId } },
+    });
+    if (!membership) {
+      throw new ForbiddenException('프로젝트 멤버만 조회할 수 있습니다.');
+    }
+
+    const { granularity, date, month, year } = opts;
+    let start: Date;
+    let end: Date;
+    let counts: number[] = [];
+
+    if (granularity === 'hourly') {
+      if (!date) throw new BadRequestException('date is required for hourly');
+      const parsed = new Date(`${date}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) throw new BadRequestException('invalid date format');
+      start = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      end = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate() + 1);
+      counts = Array.from({ length: 24 }, () => 0);
+    } else if (granularity === 'daily') {
+      if (!month) throw new BadRequestException('month is required for daily');
+      const [y, m] = month.split('-').map((v) => Number(v));
+      if (!y || !m) throw new BadRequestException('invalid month format');
+      start = new Date(y, m - 1, 1);
+      end = new Date(y, m, 1);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      counts = Array.from({ length: daysInMonth }, () => 0);
+    } else {
+      if (!year) throw new BadRequestException('year is required for monthly');
+      const y = Number(year);
+      if (!y) throw new BadRequestException('invalid year format');
+      start = new Date(y, 0, 1);
+      end = new Date(y + 1, 0, 1);
+      counts = Array.from({ length: 12 }, () => 0);
+    }
+
+    const rows = await this.channelMessageRepository
+      .createQueryBuilder('message')
+      .leftJoin('message.channel', 'channel')
+      .where('channel.projectId = :projectId', { projectId })
+      .andWhere('message.createdAt >= :start', { start })
+      .andWhere('message.createdAt < :end', { end })
+      .select(['message.createdAt'])
+      .getMany();
+
+    rows.forEach((row) => {
+      const dt = new Date(row.createdAt);
+      if (granularity === 'hourly') {
+        counts[dt.getHours()] += 1;
+      } else if (granularity === 'daily') {
+        counts[dt.getDate() - 1] += 1;
+      } else {
+        counts[dt.getMonth()] += 1;
+      }
+    });
+
+    return { granularity, counts };
+  }
+
   private async indexChannelMessage(message: ChannelMessage) {
     if (!message.content) return;
 
@@ -125,6 +189,7 @@ export class ChatService {
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
       .where('message.channelId = :channelId', {
         channelId: channelMessage.channel.id,
       })
@@ -141,6 +206,7 @@ export class ChatService {
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
       .where('message.channelId = :channelId', {
         channelId: channelMessage.channel.id,
       })
@@ -171,6 +237,7 @@ export class ChatService {
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
       .where('message.roomId = :roomId', { roomId: dmMessage.room.id })
       .andWhere('message.createdAt < :createdAt', { createdAt: dmMessage.createdAt })
       .orderBy('message.createdAt', 'DESC')
@@ -183,6 +250,7 @@ export class ChatService {
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
       .where('message.roomId = :roomId', { roomId: dmMessage.room.id })
       .andWhere('message.createdAt > :createdAt', { createdAt: dmMessage.createdAt })
       .orderBy('message.createdAt', 'ASC')
@@ -537,6 +605,7 @@ export class ChatService {
       .leftJoinAndSelect('message.reactions', 'reaction')
       .leftJoinAndSelect('reaction.user', 'reactionUser')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
       .where('message.channelId = :channelId', { channelId })
       .orderBy('message.createdAt', 'DESC')
       .take(limit);
@@ -674,6 +743,7 @@ export class ChatService {
       .leftJoinAndSelect('message.files', 'messagefile')
       .leftJoinAndSelect('messagefile.file', 'file')
       .leftJoinAndSelect('message.linkPreview', 'linkPreview')
+      .leftJoinAndSelect('message.replyTo', 'replyTo')
       .where('message.roomId = :roomId', { roomId })
       .orderBy('message.createdAt', 'DESC')
       .take(limit);

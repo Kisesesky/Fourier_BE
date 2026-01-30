@@ -1,5 +1,5 @@
 // src/modules/chat/chat.controller.ts
-import { Controller, Get, Post,  Body, Query, UseGuards, Param } from '@nestjs/common';
+import { Controller, Get, Post,  Body, Query, UseGuards, Param, Patch, BadRequestException } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -20,6 +20,7 @@ import { CreateDmRoomDto } from './dto/create-dm-room.dto';
 import { ChatGateway } from './gateways/chat.gateway';
 import { GetChannelPreferencesDto, SaveChannelPreferencesDto } from './dto/channel-preferences.dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
+import { UpdatePresenceStatusDto } from './dto/update-presence-status.dto';
 
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
@@ -214,7 +215,17 @@ export class ChatController {
   @ApiOperation({ summary: '온라인 유저 목록' })
   @Get('presence')
   async getPresence() {
-    return { onlineUserIds: this.chatGateway.getOnlineUserIds() };
+    return this.chatGateway.getPresenceSnapshot();
+  }
+
+  @ApiOperation({ summary: '프리즌스 상태 변경' })
+  @Patch('presence/status')
+  async updatePresence(
+    @RequestUser() user: User,
+    @Body() updatePresenceStatusDto: UpdatePresenceStatusDto,
+  ) {
+    this.chatGateway.setUserPresence(user.id, updatePresenceStatusDto.status);
+    return { success: true };
   }
 
   @ApiOperation({ summary: '프로젝트 채널 목록' })
@@ -230,6 +241,30 @@ export class ChatController {
       projectId,
       isDefault: channel.isDefault,
     }));
+  }
+
+  @ApiOperation({ summary: '메시지 분석 집계' })
+  @Get('analytics/messages')
+  async getMessageAnalytics(
+    @RequestUser() user: User,
+    @Query('projectId') projectId: string,
+    @Query('granularity') granularity: 'hourly' | 'daily' | 'monthly',
+    @Query('date') date?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    if (!projectId) {
+      throw new BadRequestException('projectId is required');
+    }
+    if (!granularity) {
+      throw new BadRequestException('granularity is required');
+    }
+    return this.chatService.getMessageAnalytics(projectId, user.id, {
+      granularity,
+      date,
+      month,
+      year,
+    });
   }
 
   @ApiOperation({ summary: '프로젝트 채널 생성' })

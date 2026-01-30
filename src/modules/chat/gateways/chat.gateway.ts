@@ -23,6 +23,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private onlineUsers = new Map<string, string>();
   private threadViewers = new Map<string, Set<string>>();
+  private userStatus = new Map<string, 'online' | 'offline' | 'away' | 'dnd'>();
 
   constructor(
     @Inject(forwardRef(() => ChatService))
@@ -83,6 +84,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return Array.from(this.onlineUsers.keys());
   }
 
+  getPresenceSnapshot() {
+    const statuses: Record<string, 'online' | 'offline' | 'away' | 'dnd'> = {};
+    for (const [userId, status] of this.userStatus.entries()) {
+      statuses[userId] = status;
+    }
+    return { onlineUserIds: this.getOnlineUserIds(), statuses };
+  }
+
+  setUserPresence(userId: string, status: 'online' | 'offline' | 'away' | 'dnd') {
+    this.userStatus.set(userId, status);
+    this.server.emit('presence.update', {
+      userId,
+      status,
+      onlineUserIds: this.getOnlineUserIds(),
+    });
+  }
+
   /** 클라이언트 연결 */
   async handleConnection(client: Socket) {
     try {
@@ -98,13 +116,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // 온라인 상태 등록
       this.onlineUsers.set(user.id, client.id);
+      this.userStatus.set(user.id, 'online');
       this.server.emit('presence.update', {
         userId: user.id,
         status: 'online',
         onlineUserIds: this.getOnlineUserIds(),
       });
       client.emit('presence.snapshot', {
-        onlineUserIds: this.getOnlineUserIds(),
+        ...this.getPresenceSnapshot(),
       });
 
       // 참여하는 DM/채널 룸에 자동 입장
@@ -128,6 +147,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const userId = userEntry[0];
     this.onlineUsers.delete(userId);
+    this.userStatus.set(userId, 'offline');
     this.server.emit('presence.update', {
       userId,
       status: 'offline',

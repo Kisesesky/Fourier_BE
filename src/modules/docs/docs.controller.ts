@@ -1,5 +1,5 @@
 // src/modules/docs/docs.controller.ts
-import { Controller, Post, Patch, Delete, Param, Body, Query, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Patch, Delete, Param, Body, Query, Get, UseGuards, BadRequestException } from '@nestjs/common';
 import { DocsService } from './docs.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
@@ -88,6 +88,19 @@ export class DocsController {
     @RequestUser() user: User,
   ) {
     return this.docsService.searchDocs(user.id, q);
+  }
+
+  @ApiOperation({ summary: '문서 분석 집계' })
+  @Get('analytics')
+  getDocAnalytics(
+    @RequestUser() user: User,
+    @Query('granularity') granularity: 'hourly' | 'daily' | 'monthly',
+    @Query('date') date?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    if (!granularity) throw new BadRequestException('granularity is required');
+    return this.docsService.getDocAnalytics(user, { granularity, date, month, year });
   }
 
   @ApiOperation({

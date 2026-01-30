@@ -1,5 +1,5 @@
 // src/modules/calendar/calendar.controller.ts
-import { Controller, Post, Get, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Param, Body, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { CalendarService } from './calendar.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
@@ -37,6 +37,20 @@ export class CalendarController {
     @RequestUser() user: User
   ) {
     return this.calendarService.getProjectEvents(projectId, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 분석 집계' })
+  @Get('analytics')
+  getEventAnalytics(
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+    @Query('granularity') granularity: 'hourly' | 'daily' | 'monthly',
+    @Query('date') date?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    if (!granularity) throw new BadRequestException('granularity is required');
+    return this.calendarService.getEventAnalytics(projectId, user, { granularity, date, month, year });
   }
 
   @ApiOperation({ summary: '캘린더 이벤트 수정'})

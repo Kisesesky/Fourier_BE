@@ -1,5 +1,5 @@
 // src/module/docs/docs.service.ts
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Folder } from './entities/folder.entity';
@@ -147,6 +147,58 @@ export class DocsService {
       user: { id: dto.userId } as User,
       permission: dto.permission,
     });
+  }
+
+  async getDocAnalytics(
+    user: User,
+    opts: { granularity: 'hourly' | 'daily' | 'monthly'; date?: string; month?: string; year?: string },
+  ) {
+    const { granularity, date, month, year } = opts;
+    let start: Date;
+    let end: Date;
+    let counts: number[] = [];
+
+    if (granularity === 'hourly') {
+      if (!date) throw new BadRequestException('date is required for hourly');
+      const parsed = new Date(`${date}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) throw new BadRequestException('invalid date format');
+      start = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      end = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate() + 1);
+      counts = Array.from({ length: 24 }, () => 0);
+    } else if (granularity === 'daily') {
+      if (!month) throw new BadRequestException('month is required for daily');
+      const [y, m] = month.split('-').map((v) => Number(v));
+      if (!y || !m) throw new BadRequestException('invalid month format');
+      start = new Date(y, m - 1, 1);
+      end = new Date(y, m, 1);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      counts = Array.from({ length: daysInMonth }, () => 0);
+    } else {
+      if (!year) throw new BadRequestException('year is required for monthly');
+      const y = Number(year);
+      if (!y) throw new BadRequestException('invalid year format');
+      start = new Date(y, 0, 1);
+      end = new Date(y + 1, 0, 1);
+      counts = Array.from({ length: 12 }, () => 0);
+    }
+
+    const rows = await this.documentRepository
+      .createQueryBuilder('document')
+      .leftJoin('document.members', 'member')
+      .where('member.userId = :userId', { userId: user.id })
+      .andWhere('document.createdAt >= :start', { start })
+      .andWhere('document.createdAt < :end', { end })
+      .select(['document.createdAt'])
+      .getMany();
+
+    rows.forEach((row) => {
+      const dt = new Date(row.createdAt);
+      if (granularity === 'hourly') counts[dt.getHours()] += 1;
+      else if (granularity === 'daily') counts[dt.getDate() - 1] += 1;
+      else counts[dt.getMonth()] += 1;
+    });
+
+    return { granularity, counts };
   }
 
   /* -------------------- Version -------------------- */
