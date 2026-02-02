@@ -13,6 +13,11 @@ export class UpdateCalendarEventDto {
   @IsUUID()
   categoryId?: string;
 
+  @ApiProperty({ example: 'calendar-uuid', required: false })
+  @IsOptional()
+  @IsUUID()
+  calendarId?: string;
+
   @ApiProperty({ example: '2025-01-10T10:00:00.000Z' })
   @IsOptional()
   @IsDateString()

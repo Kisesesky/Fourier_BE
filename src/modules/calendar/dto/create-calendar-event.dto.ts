@@ -11,6 +11,10 @@ export class CreateCalendarEventDto {
   @IsUUID()
   categoryId: string;
 
+  @ApiProperty({ example: 'calendar-uuid' })
+  @IsUUID()
+  calendarId: string;
+
   @ApiProperty({ example: '2025-01-10T10:00:00.000Z' })
   @IsDateString()
   startAt: string;

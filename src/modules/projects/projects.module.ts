@@ -16,10 +16,14 @@ import { CalendarModule } from '../calendar/calendar.module';
 import { DocsModule } from '../docs/docs.module';
 import { IssuesModule } from '../issues/issues.module';
 import { CalendarCategory } from '../calendar/entities/calendar-category.entity';
+import { Calendar } from '../calendar/entities/calendar.entity';
+import { CalendarMember } from '../calendar/entities/calendar-member.entity';
+import { CalendarFolder } from '../calendar/entities/calendar-folder.entity';
+import { CalendarEvent } from '../calendar/entities/calendar-event.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, ProjectMember, ProjectFavorite, TeamMember, Issue, Channel, ChannelMember, CalendarCategory]),
+    TypeOrmModule.forFeature([Project, ProjectMember, ProjectFavorite, TeamMember, Issue, Channel, ChannelMember, CalendarCategory, Calendar, CalendarMember, CalendarFolder, CalendarEvent]),
     CalendarModule,
     DocsModule,
     IssuesModule,

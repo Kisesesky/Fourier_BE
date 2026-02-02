@@ -3,6 +3,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, Up
 import { Project } from 'src/modules/projects/entities/project.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 import { CalendarCategory } from './calendar-category.entity';
+import { Calendar } from './calendar.entity';
 
 @Entity()
 export class CalendarEvent {
@@ -20,6 +21,9 @@ export class CalendarEvent {
 
   @ManyToOne(() => CalendarCategory, { eager: true })
   category: CalendarCategory;
+
+  @ManyToOne(() => Calendar, { onDelete: 'CASCADE', nullable: true })
+  calendar: Calendar;
 
   @Column({ type: 'timestamp' })
   startAt: Date;

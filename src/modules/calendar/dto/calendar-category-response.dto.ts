@@ -10,4 +10,10 @@ export class CalendarCategoryResponseDto {
 
   @ApiProperty({ example: '#3788d8' })
   categoryColor: string;
+
+  @ApiProperty({ example: 'calendar-uuid', required: false })
+  calendarId?: string;
+
+  @ApiProperty({ example: false, required: false })
+  isDefault?: boolean;
 }

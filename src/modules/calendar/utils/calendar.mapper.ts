@@ -14,10 +14,12 @@ export function mapEventToResponse(
     location: calendarEvent.location,
     memo: calendarEvent.memo,
     createdAt: calendarEvent.createdAt,
+    calendarId: calendarEvent.calendar?.id ?? calendarEvent.category?.calendar?.id,
     category: {
       id: calendarEvent.category.id,
       name: calendarEvent.category.name,
       categoryColor: calendarEvent.category.color,
+      calendarId: calendarEvent.category.calendar?.id ?? calendarEvent.calendar?.id,
     },
     sourceType: calendarEvent.sourceType,
     linkedIssueId: calendarEvent.linkedIssueId,
@@ -30,5 +32,16 @@ export function mapCategory(category: CalendarCategory) {
     id: category.id,
     name: category.name,
     categoryColor: category.color,
+    calendarId: category.calendar?.id,
+    isDefault: category.isDefault,
+  };
+}
+
+export function mapFolder(folder: { id: string; name: string; createdBy?: { id: string } | null; isActive?: boolean }) {
+  return {
+    id: folder.id,
+    name: folder.name,
+    createdById: folder.createdBy?.id ?? null,
+    isActive: folder.isActive ?? true,
   };
 }

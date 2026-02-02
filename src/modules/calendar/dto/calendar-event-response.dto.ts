@@ -12,6 +12,9 @@ export class CalendarEventResponseDto {
   @ApiProperty({ example: '회의' })
   category: CalendarCategoryResponseDto;
 
+  @ApiProperty({ example: 'calendar-uuid', required: false })
+  calendarId?: string;
+
   @ApiProperty({ example: '2025-01-10T10:00:00.000Z' })
   startAt: Date;
 

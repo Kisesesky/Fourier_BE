@@ -8,8 +8,15 @@ import { UpdateCalendarEventDto } from './dto/update-calendar-event.dto';
 import { CreateCalendarEventDto } from './dto/create-calendar-event.dto';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CalendarEventResponseDto } from './dto/calendar-event-response.dto';
+import { CalendarCategoryResponseDto } from './dto/calendar-category-response.dto';
 import { CreateCalendarCategoryDto } from './dto/create-calendar-category.dto';
 import { UpdateCalendarCategoryDto } from './dto/update-calendar-category.dto';
+import { CreateCalendarDto } from './dto/create-calendar.dto';
+import { UpdateCalendarDto } from './dto/update-calendar.dto';
+import { CalendarResponseDto } from './dto/calendar-response.dto';
+import { CreateCalendarFolderDto } from './dto/create-calendar-folder.dto';
+import { UpdateCalendarFolderDto } from './dto/update-calendar-folder.dto';
+import { CalendarFolderResponseDto } from './dto/calendar-folder-response.dto';
 
 @ApiTags('calendar')
 @UseGuards(JwtAuthGuard)
@@ -29,14 +36,116 @@ export class CalendarController {
     return this.calendarService.createEvent(projectId, createCalendarEventDto, user);
   }
 
+  @ApiOperation({ summary: '캘린더 목록 조회'})
+  @ApiOkResponse({ type: [CalendarResponseDto] })
+  @Get('calendars')
+  getCalendars(
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.getCalendars(projectId, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 폴더 목록 조회'})
+  @ApiOkResponse({ type: [CalendarFolderResponseDto] })
+  @Get('folders')
+  getFolders(
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.getFolders(projectId, user);
+  }
+
+  @ApiOperation({ summary: '프로젝트 캘린더 카테고리 목록 조회' })
+  @ApiOkResponse({ type: [CalendarCategoryResponseDto] })
+  @Get('categories')
+  getProjectCategories(
+    @Param('projectId') projectId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.getProjectCategories(projectId, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 폴더 생성'})
+  @ApiOkResponse({ type: CalendarFolderResponseDto })
+  @Post('folders')
+  createFolder(
+    @Param('projectId') projectId: string,
+    @Body() createCalendarFolderDto: CreateCalendarFolderDto,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.createFolder(projectId, createCalendarFolderDto, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 폴더 수정'})
+  @ApiOkResponse({ type: CalendarFolderResponseDto })
+  @Patch('folders/:folderId')
+  updateFolder(
+    @Param('folderId') folderId: string,
+    @Body() updateCalendarFolderDto: UpdateCalendarFolderDto,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.updateFolder(folderId, updateCalendarFolderDto, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 폴더 삭제'})
+  @Delete('folders/:folderId')
+  deleteFolder(
+    @Param('folderId') folderId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.deleteFolder(folderId, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 생성'})
+  @ApiOkResponse({ type: CalendarResponseDto })
+  @Post('calendars')
+  createCalendar(
+    @Param('projectId') projectId: string,
+    @Body() createCalendarDto: CreateCalendarDto,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.createCalendar(projectId, createCalendarDto, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 수정'})
+  @ApiOkResponse({ type: CalendarResponseDto })
+  @Patch('calendars/:calendarId')
+  updateCalendar(
+    @Param('calendarId') calendarId: string,
+    @Body() updateCalendarDto: UpdateCalendarDto,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.updateCalendar(calendarId, updateCalendarDto, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 삭제'})
+  @Delete('calendars/:calendarId')
+  deleteCalendar(
+    @Param('calendarId') calendarId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.deleteCalendar(calendarId, user);
+  }
+
+  @ApiOperation({ summary: '캘린더 멤버 목록' })
+  @Get('calendars/:calendarId/members')
+  getCalendarMembers(
+    @Param('calendarId') calendarId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.calendarService.getCalendarMembers(calendarId, user);
+  }
+
   @ApiOperation({ summary: '캘린더 이벤트 목록 조회'})
   @ApiOkResponse({ type: [CalendarEventResponseDto] })
   @Get('events')
   getEvents(
     @Param('projectId') projectId: string,
-    @RequestUser() user: User
+    @RequestUser() user: User,
+    @Query('calendarId') calendarId?: string,
   ) {
-    return this.calendarService.getProjectEvents(projectId, user);
+    return this.calendarService.getProjectEvents(projectId, user, calendarId);
   }
 
   @ApiOperation({ summary: '캘린더 분석 집계' })
@@ -74,26 +183,26 @@ export class CalendarController {
   }
 
   @ApiOperation({ summary: '캘린더 카테고리 목록' })
-  @Get('categories')
+  @Get('calendars/:calendarId/categories')
   getCategories(
-    @Param('projectId') projectId: string,
+    @Param('calendarId') calendarId: string,
     @RequestUser() user: User,
   ) {
-    return this.calendarService.getCategories(projectId, user);
+    return this.calendarService.getCategories(calendarId, user);
   }
 
   @ApiOperation({ summary: '캘린더 카테고리 생성' })
-  @Post('categories')
+  @Post('calendars/:calendarId/categories')
   createCategory(
-    @Param('projectId') projectId: string,
+    @Param('calendarId') calendarId: string,
     @Body() createCalendarCategoryDto: CreateCalendarCategoryDto,
     @RequestUser() user: User,
   ) {
-    return this.calendarService.createCategory(projectId, createCalendarCategoryDto, user);
+    return this.calendarService.createCategory(calendarId, createCalendarCategoryDto, user);
   }
 
   @ApiOperation({ summary: '캘린더 카테고리 수정' })
-  @Patch('categories/:categoryId')
+  @Patch('calendars/:calendarId/categories/:categoryId')
   updateCategory(
     @Param('categoryId') categoryId: string,
     @Body() updateCalendarCategoryDto: UpdateCalendarCategoryDto,
@@ -103,7 +212,7 @@ export class CalendarController {
   }
 
   @ApiOperation({ summary: '캘린더 카테고리 비활성화' })
-  @Delete('categories/:categoryId')
+  @Delete('calendars/:calendarId/categories/:categoryId')
   deleteCategory(
     @Param('categoryId') categoryId: string,
     @RequestUser() user: User,

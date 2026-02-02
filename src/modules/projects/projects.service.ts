@@ -19,6 +19,12 @@ import { DocsService } from '../docs/docs.service';
 import { IssuesService } from '../issues/issues.service';
 import { IssueStatus } from '../issues/constants/issue-status.enum';
 import { CalendarCategory } from '../calendar/entities/calendar-category.entity';
+import { Calendar } from '../calendar/entities/calendar.entity';
+import { CalendarMember } from '../calendar/entities/calendar-member.entity';
+import { CalendarFolder } from '../calendar/entities/calendar-folder.entity';
+import { CalendarMemberRole } from '../calendar/constants/calendar-member-role.enum';
+import { CalendarType } from '../calendar/constants/calendar-type.enum';
+import { CalendarEvent } from '../calendar/entities/calendar-event.entity';
 
 @Injectable()
 export class ProjectsService {
@@ -37,6 +43,14 @@ export class ProjectsService {
     private readonly channelMemberRepository: Repository<ChannelMember>,
     @InjectRepository(CalendarCategory)
     private readonly calendarCategoryRepository: Repository<CalendarCategory>,
+    @InjectRepository(Calendar)
+    private readonly calendarRepository: Repository<Calendar>,
+    @InjectRepository(CalendarMember)
+    private readonly calendarMemberRepository: Repository<CalendarMember>,
+    @InjectRepository(CalendarFolder)
+    private readonly calendarFolderRepository: Repository<CalendarFolder>,
+    @InjectRepository(CalendarEvent)
+    private readonly calendarEventRepository: Repository<CalendarEvent>,
     private readonly calendarService: CalendarService,
     private readonly docsService: DocsService,
     private readonly issuesService: IssuesService,
@@ -106,6 +120,7 @@ export class ProjectsService {
       selectedUserIds.length > 0
         ? await this.teamMemberRepository.find({
             where: { team: { id: teamId }, user: { id: In(selectedUserIds) } },
+            relations: ['user'],
           })
         : [];
     
@@ -153,9 +168,34 @@ export class ProjectsService {
       }
     }
 
-    // 7. 캘린더 기본 이벤트 생성
+    // 7. 캘린더 기본 생성 (폴더 + 프로젝트 캘린더 1개 + 기본 카테고리 + 기본 이벤트)
     const start = new Date();
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1시간 기본
+    const defaultFolder = await this.calendarFolderRepository.save(
+      this.calendarFolderRepository.create({
+        project,
+        name: project.name,
+        createdBy: user,
+        isActive: true,
+      }),
+    );
+    const baseCalendar = await this.calendarRepository.save(
+      this.calendarRepository.create({
+        project,
+        name: '프로젝트 캘린더',
+        type: CalendarType.TEAM,
+        owner: user,
+        color: '#3b82f6',
+        folder: defaultFolder,
+      }),
+    );
+    await this.calendarMemberRepository.save(
+      this.calendarMemberRepository.create({
+        calendar: baseCalendar,
+        user,
+        role: CalendarMemberRole.OWNER,
+      }),
+    );
     const defaultCategories = [
       { name: '일정', color: '#3788d8', isDefault: true },
       { name: '회의', color: '#2ecc71' },
@@ -164,20 +204,29 @@ export class ProjectsService {
     ];
 
     const savedCategories = await this.calendarCategoryRepository.save(
-      defaultCategories.map(c => ({
+      defaultCategories.map((c) => ({
         ...c,
         project,
-      }))
+        calendar: baseCalendar,
+      })),
     );
 
-    const defaultCategory = savedCategories.find(c => c.isDefault);
+    const defaultCategory = savedCategories.find((c) => c.isDefault);
 
-    await this.calendarService.createEvent(project.id, {
-      title: '프로젝트 시작',
-      categoryId: defaultCategory.id,
-      startAt: start.toISOString(),
-      endAt: end.toISOString(),
-    }, user);
+    if (defaultCategory) {
+      await this.calendarService.createEvent(project.id, {
+        title: '프로젝트 시작',
+        calendarId: baseCalendar.id,
+        categoryId: defaultCategory.id,
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+      }, user);
+    }
+
+    // 7-1. 개인 캘린더 자동 생성
+    for (const member of projectMembers) {
+      await this.calendarService.ensurePersonalCalendar(project.id, member.user);
+    }
 
     // 8. Docs 루트 폴더/문서 생성
     const rootFolder = await this.docsService.createFolder({
@@ -226,6 +275,7 @@ export class ProjectsService {
     // 팀 멤버만 추가 가능
     const teamMember = await this.teamMemberRepository.findOne({
       where: { team: { id: project.team.id }, user: { id: userId } },
+      relations: ['user'],
     });
     if (!teamMember) {
       throw new ForbiddenException('팀 멤버만 추가 가능');
@@ -261,6 +311,8 @@ export class ProjectsService {
         );
       }
     }
+
+    await this.calendarService.ensurePersonalCalendar(projectId, teamMember.user);
 
     return newMember;
   }
@@ -384,6 +436,22 @@ export class ProjectsService {
     if (!actorTeamMember || !hasTeamPermission(actorTeamMember, TeamPermission.PROJECT_INVITE_MEMBER)) {
       throw new ForbiddenException('프로젝트 멤버 삭제 권한이 없습니다.');
     }
+
+    const personalCalendars = await this.calendarRepository.find({
+      where: { project: { id: projectId }, type: CalendarType.PERSONAL, owner: { id: userId }, isActive: true },
+      relations: ['owner'],
+    });
+    if (personalCalendars.length > 0) {
+      for (const calendar of personalCalendars) {
+        calendar.isActive = false;
+        await this.calendarRepository.save(calendar);
+      }
+    }
+
+    await this.calendarEventRepository.delete({
+      project: { id: projectId },
+      createdBy: { id: userId },
+    });
 
     return this.projectMemberRepository.remove(member);
   }
