@@ -24,6 +24,13 @@ export function mapEventToResponse(
     sourceType: calendarEvent.sourceType,
     linkedIssueId: calendarEvent.linkedIssueId,
     createdById: calendarEvent.createdBy?.id,
+    createdBy: calendarEvent.createdBy
+      ? {
+          id: calendarEvent.createdBy.id,
+          name: calendarEvent.createdBy.name,
+          avatarUrl: calendarEvent.createdBy.avatarUrl ?? null,
+        }
+      : undefined,
   };
 }
 

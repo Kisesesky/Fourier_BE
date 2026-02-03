@@ -556,6 +556,7 @@ export class CalendarService {
       const events = await this.calendarEventRepository.find({
         where: { project: { id: projectId }, calendar: { id: calendarId } },
         order: { startAt: 'ASC' },
+        relations: ['createdBy', 'category', 'category.calendar', 'calendar'],
       });
       return events.map(event => mapEventToResponse(event));
     }
@@ -566,6 +567,7 @@ export class CalendarService {
     const events = await this.calendarEventRepository.find({
       where: { project: { id: projectId }, calendar: { id: In(calendarIds) } },
       order: { startAt: 'ASC' },
+      relations: ['createdBy', 'category', 'category.calendar', 'calendar'],
     });
     return events.map(event => mapEventToResponse(event));
   }
@@ -877,6 +879,7 @@ export class CalendarService {
   ) {
     const event = await this.calendarEventRepository.findOne({
       where: { id: eventId },
+      relations: ['createdBy', 'category', 'category.calendar', 'calendar'],
     });
 
     if (!event || event.sourceType !== 'issue') {

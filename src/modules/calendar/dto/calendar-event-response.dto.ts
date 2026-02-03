@@ -36,6 +36,12 @@ export class CalendarEventResponseDto {
   @ApiProperty({ example: 'user-uuid', required: false })
   createdById?: string;
 
+  @ApiProperty({
+    required: false,
+    example: { id: 'user-uuid', name: '홍길동', avatarUrl: 'https://example.com/avatar.png' },
+  })
+  createdBy?: { id: string; name: string; avatarUrl?: string | null };
+
   @ApiProperty({ example: '2025-01-01T00:00:00.000Z' })
   createdAt: Date;
 }
