@@ -7,4 +7,7 @@ export class IssueUserDto {
 
   @ApiProperty({ example: '홍길동' })
   name: string;
+
+  @ApiProperty({ example: 'https://example.com/avatar.png', required: false })
+  avatarUrl?: string | null;
 }

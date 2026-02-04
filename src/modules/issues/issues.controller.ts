@@ -1,5 +1,5 @@
 // src/modules/issue/issue.controller.ts
-import { Controller, Post, Param, Body, Patch, Get, UseGuards, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Param, Body, Patch, Get, UseGuards, Query, BadRequestException, Delete } from '@nestjs/common';
 import { IssuesService } from './issues.service';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
 import { User } from '../users/entities/user.entity';
@@ -13,6 +13,9 @@ import { IssueResponseDto } from './dto/issue-response.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AddSubtaskDto } from './dto/add-subtask.dto';
+import { CreateIssueGroupDto } from './dto/create-issue-group.dto';
+import { UpdateIssueGroupDto } from './dto/update-issue-group.dto';
+import { IssueGroupResponseDto } from './dto/issue-group-response.dto';
 
 @ApiTags('issues')
 @UseGuards(JwtAuthGuard)
@@ -48,6 +51,16 @@ export class IssuesController {
     @RequestUser() user: User,
   ) {
     return this.issuesService.updateIssue(issueId, updateIssueDto, user);
+  }
+
+  @ApiOperation({ summary: '이슈 삭제'})
+  @ApiOkResponse({ schema: { example: { ok: true } } })
+  @Delete(':issueId')
+  removeIssue(
+    @Param('issueId') issueId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.issuesService.removeIssue(issueId, user);
   }
 
   @ApiOperation({ summary: '담당자 지정'})
@@ -93,6 +106,15 @@ export class IssuesController {
     return this.issuesService.addComment(issueId, user, createCommentDto.content);
   }
 
+  @ApiOperation({ summary: '댓글 삭제' })
+  @Delete('comment/:commentId')
+  removeComment(
+    @Param('commentId') commentId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.issuesService.removeComment(commentId, user);
+  }
+
   @ApiOperation({ summary: '하위 업무 추가' })
   @Post('subtask')
   addSubtask(
@@ -102,6 +124,15 @@ export class IssuesController {
     return this.issuesService.addSubtask(addSubtaskDto, user);
   }
 
+  @ApiOperation({ summary: '하위 업무 삭제' })
+  @Delete('subtask/:subtaskId')
+  removeSubtask(
+    @Param('subtaskId') subtaskId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.issuesService.removeSubtask(subtaskId, user);
+  }
+
   @ApiOperation({ summary: '프로젝트 이슈 목록' })
   @ApiOkResponse({ type: [IssueResponseDto] })
   @Get()
@@ -109,6 +140,45 @@ export class IssuesController {
     @Param('projectId') projectId: string,
   ) {
     return this.issuesService.getProjectIssues(projectId);
+  }
+
+  @ApiOperation({ summary: '이슈 테이블 목록' })
+  @ApiOkResponse({ type: [IssueGroupResponseDto] })
+  @Get('groups')
+  listIssueGroups(
+    @Param('projectId') projectId: string,
+  ) {
+    return this.issuesService.listIssueGroups(projectId);
+  }
+
+  @ApiOperation({ summary: '이슈 테이블 생성' })
+  @ApiCreatedResponse({ type: IssueGroupResponseDto })
+  @Post('groups')
+  createIssueGroup(
+    @Param('projectId') projectId: string,
+    @Body() createIssueGroupDto: CreateIssueGroupDto,
+  ) {
+    return this.issuesService.createIssueGroup(projectId, createIssueGroupDto.name, createIssueGroupDto.color);
+  }
+
+  @ApiOperation({ summary: '이슈 테이블 수정' })
+  @ApiOkResponse({ type: IssueGroupResponseDto })
+  @Patch('groups/:groupId')
+  updateIssueGroup(
+    @Param('projectId') projectId: string,
+    @Param('groupId') groupId: string,
+    @Body() updateIssueGroupDto: UpdateIssueGroupDto,
+  ) {
+    return this.issuesService.updateIssueGroup(projectId, groupId, updateIssueGroupDto);
+  }
+
+  @ApiOperation({ summary: '이슈 테이블 삭제' })
+  @Patch('groups/:groupId/remove')
+  removeIssueGroup(
+    @Param('projectId') projectId: string,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.issuesService.removeIssueGroup(projectId, groupId);
   }
 
   @ApiOperation({ summary: '프로젝트 Kanban 보드' })

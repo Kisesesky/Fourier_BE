@@ -3,6 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IssueUserDto } from './issue-user.dto';
 import { IssueCommentResponseDto } from './issue-comment-response.dto';
 import { IssueStatus } from '../constants/issue-status.enum';
+import { IssueGroupResponseDto } from './issue-group-response.dto';
+import { IssuePriority } from '../constants/issue-priority.enum';
 
 export class IssueResponseDto {
   @ApiProperty({ example: 'issue-uuid' })
@@ -13,6 +15,9 @@ export class IssueResponseDto {
 
   @ApiProperty({ enum: IssueStatus })
   status: IssueStatus;
+
+  @ApiProperty({ enum: IssuePriority })
+  priority: IssuePriority;
 
   @ApiProperty({ example: 40 })
   progress: number;
@@ -26,8 +31,14 @@ export class IssueResponseDto {
   @ApiProperty({ type: IssueUserDto, nullable: true })
   assignee?: IssueUserDto;
 
+  @ApiProperty({ type: IssueGroupResponseDto, nullable: true })
+  group?: IssueGroupResponseDto;
+
   @ApiProperty({ type: IssueUserDto })
   creator: IssueUserDto;  
+
+  @ApiProperty({ example: 'parent-issue-uuid', nullable: true })
+  parentId?: string | null;
 
   @ApiProperty({ type: () => [IssueResponseDto] })
   subtasks: IssueResponseDto[];

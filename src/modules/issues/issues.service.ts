@@ -11,6 +11,7 @@ import { IssueComment } from './entities/issue-comment.entity';
 import { IssueResponseDto } from './dto/issue-response.dto';
 import { mapIssuesToResponse } from './utils/issues.mapper';
 import { IssueStatus } from './constants/issue-status.enum';
+import { IssuePriority } from './constants/issue-priority.enum';
 import { AddSubtaskDto } from './dto/add-subtask.dto';
 import { CalendarService } from '../calendar/calendar.service';
 import { syncCalendarEvent } from './utils/sync-calendar-event';
@@ -24,6 +25,7 @@ import { CalendarActivityAction } from '../calendar/constants/calendar-activity-
 import * as jwt from 'jsonwebtoken';
 import { AppConfigService } from 'src/config/app/config.service';
 import { toTime } from './utils/to-time.util';
+import { IssueGroup } from './entities/issue-group.entity';
 
 @Injectable()
 export class IssuesService {
@@ -36,6 +38,8 @@ export class IssuesService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(IssueComment)
     private readonly issueCommentRepository: Repository<IssueComment>,
+    @InjectRepository(IssueGroup)
+    private readonly issueGroupRepository: Repository<IssueGroup>,
     private readonly calendarService: CalendarService,
     private readonly activityLogService: ActivityLogService,
     private readonly appConfigService: AppConfigService,
@@ -59,20 +63,13 @@ export class IssuesService {
     projectId: string,
   ) {
     const issues = await this.issueRepository.find({
-      where: { project: { id: projectId }, parent: null },
-      relations: [
-        'creator',
-        'assignee',
-        'comments',
-        'comments.author',
-        'subtasks',
-        'subtasks.creator',
-        'subtasks.assignee',
-      ],
+      where: { project: { id: projectId } },
+      relations: ['creator', 'assignee', 'group', 'comments', 'comments.author'],
       order: { createdAt: 'ASC' },
     });
 
-    return issues.map(mapIssuesToResponse);
+    const roots = this.buildIssueTree(issues);
+    return roots.map(mapIssuesToResponse);
   }
 
   /** 프로젝트 대시보드 통계 */
@@ -201,13 +198,27 @@ export class IssuesService {
     const assignee = createIssueDto.assigneeId
       ? await this.userRepository.findOne({ where: { id: createIssueDto.assigneeId } })
       : null;
+
+    const group = createIssueDto.groupId
+      ? await this.issueGroupRepository.findOne({ where: { id: createIssueDto.groupId, project: { id: projectId } } })
+      : null;
+    if (createIssueDto.groupId && !group) {
+      throw new NotFoundException('이슈 테이블이 없습니다.');
+    }
     
+    const inheritedGroupId = !createIssueDto.groupId && parent ? await this.findNearestGroupId(parent) : null;
+
     const issue = this.issueRepository.create({
       ...createIssueDto,
       project,
+      projectId: project.id,
       creator: user,
-      parent,
+      creatorId: user.id,
+      parentId: parent?.id ?? null,
       assignee,
+      assigneeId: assignee?.id ?? null,
+      group,
+      groupId: group?.id ?? inheritedGroupId ?? null,
       status: createIssueDto.status ?? IssueStatus.PLANNED,
       progress: createIssueDto.progress ?? 0,
       startAt: createIssueDto.startAt ? new Date(createIssueDto.startAt) : null,
@@ -242,7 +253,7 @@ export class IssuesService {
   ) {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
-      relations: ['assignee', 'project', 'project.team']
+      relations: ['assignee', 'project', 'project.team', 'group']
     });
 
     if (!issue) {
@@ -252,6 +263,14 @@ export class IssuesService {
     const before = snapshot(issue);
     const beforeStartAt = issue.startAt;
     const beforeEndAt = issue.endAt;
+    if (updateIssueDto.groupId) {
+      const group = await this.issueGroupRepository.findOne({ where: { id: updateIssueDto.groupId, project: { id: issue.project.id } } });
+      if (!group) {
+        throw new NotFoundException('이슈 테이블이 없습니다.');
+      }
+      issue.group = group;
+    }
+
     Object.assign(issue, {
       ...updateIssueDto,
       startAt: updateIssueDto.startAt ? new Date(updateIssueDto.startAt) : issue.startAt,
@@ -304,6 +323,32 @@ export class IssuesService {
       });
     }
     return mapIssuesToResponse(saved);
+  }
+
+  async removeIssue(issueId: string, user: User) {
+    const issue = await this.issueRepository.findOne({
+      where: { id: issueId },
+      relations: ['project', 'project.team'],
+    });
+    if (!issue) {
+      throw new NotFoundException('해당 이슈가 없습니다.');
+    }
+
+    await this.issueRepository.remove(issue);
+
+    await this.activityLogService.log({
+      actorId: user.id,
+      projectId: issue.project.id,
+      teamId: issue.project.team.id,
+      targetType: ActivityTargetType.ISSUE,
+      targetId: issue.id,
+      action: IssueActivityAction.DELETED,
+      payload: {
+        before: snapshot(issue),
+      },
+    });
+
+    return { ok: true };
   }
 
   async deleteIssue(
@@ -385,22 +430,60 @@ export class IssuesService {
     projectId: string,
   ): Promise<IssueResponseDto[]> {
     const issues = await this.issueRepository.find({
-      where: { project: { id: projectId }, parent: null },
-      relations: [
-        'creator',
-        'assignee',
-        'comments',
-        'comments.author',
-        'subtasks',
-        'subtasks.creator',
-        'subtasks.assignee',
-        'subtasks.comments',
-        'subtasks.comments.author',
-      ],
+      where: { project: { id: projectId } },
+      relations: ['creator', 'assignee', 'group', 'comments', 'comments.author'],
       order: { createdAt: 'ASC' },
     });
 
-    return issues.map(mapIssuesToResponse);
+    const roots = this.buildIssueTree(issues);
+    return roots.map(mapIssuesToResponse);
+  }
+
+  async listIssueGroups(projectId: string) {
+    const groups = await this.issueGroupRepository.find({
+      where: { project: { id: projectId } },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    return groups;
+  }
+
+  async createIssueGroup(projectId: string, name?: string, color?: string) {
+    const project = await this.projectRepository.findOne({ where: { id: projectId } });
+    if (!project) {
+      throw new NotFoundException('프로젝트가 없습니다.');
+    }
+    const count = await this.issueGroupRepository.count({ where: { project: { id: projectId } } });
+    const palette = ['#f87171', '#60a5fa', '#fbbf24', '#a78bfa', '#34d399'];
+    const group = this.issueGroupRepository.create({
+      name: name?.trim() || `새 테이블 ${count + 1}`,
+      color: color || palette[count % palette.length],
+      sortOrder: count,
+      project,
+    });
+    return this.issueGroupRepository.save(group);
+  }
+
+  async updateIssueGroup(projectId: string, groupId: string, patch: { name?: string; color?: string; sortOrder?: number }) {
+    const group = await this.issueGroupRepository.findOne({ where: { id: groupId, project: { id: projectId } } });
+    if (!group) {
+      throw new NotFoundException('이슈 테이블이 없습니다.');
+    }
+    if (typeof patch.name === 'string') group.name = patch.name;
+    if (typeof patch.color === 'string') group.color = patch.color;
+    if (typeof patch.sortOrder === 'number') group.sortOrder = patch.sortOrder;
+    return this.issueGroupRepository.save(group);
+  }
+
+  async removeIssueGroup(projectId: string, groupId: string) {
+    const group = await this.issueGroupRepository.findOne({ where: { id: groupId, project: { id: projectId } }, relations: ['issues'] });
+    if (!group) {
+      throw new NotFoundException('이슈 테이블이 없습니다.');
+    }
+    if (group.issues?.length) {
+      await this.issueRepository.update({ group: { id: group.id } }, { group: null });
+    }
+    await this.issueGroupRepository.remove(group);
+    return { ok: true };
   }
 
   /** 하위 업무 추가 */
@@ -410,35 +493,65 @@ export class IssuesService {
   ) {
     const parent = await this.issueRepository.findOne({
       where: { id: addSubtaskDto.parentId },
-      relations: ['subtasks', 'project', 'project.team'],
     });
     if (!parent) {
       throw new NotFoundException('상위 업무가 없습니다.');
     }
 
-    const assignee = addSubtaskDto.assigneeId ? { id: addSubtaskDto.assigneeId } : null;
+    let projectId = parent.projectId ?? null;
+    let groupId = parent.groupId ?? null;
+    let cursorParentId = parent.parentId ?? null;
+    while (!groupId && cursorParentId) {
+      const cursor = await this.issueRepository.findOne({ where: { id: cursorParentId } });
+      if (!cursor) break;
+      if (!projectId && cursor.projectId) projectId = cursor.projectId;
+      if (!groupId && cursor.groupId) groupId = cursor.groupId;
+      cursorParentId = cursor.parentId ?? null;
+    }
+    if (!projectId) {
+      throw new NotFoundException('프로젝트 정보를 찾을 수 없습니다.');
+    }
+    const project = await this.projectRepository.findOne({ where: { id: projectId }, relations: ['team'] });
+    if (!project) {
+      throw new NotFoundException('프로젝트 정보를 찾을 수 없습니다.');
+    }
+    const team = project.team;
+
+    const assigneeId = addSubtaskDto.assigneeId ?? null;
+    const now = new Date();
+    const startAt = addSubtaskDto.startAt ? new Date(addSubtaskDto.startAt) : null;
+    const endAt = addSubtaskDto.dueAt ? new Date(addSubtaskDto.dueAt) : null;
+
     const subtask = this.issueRepository.create({
       title: addSubtaskDto.title,
-      parent,
-      assignee,
-      startAt: addSubtaskDto.startAt ? new Date(addSubtaskDto.startAt) : null,
-      endAt: addSubtaskDto.dueAt ? new Date(addSubtaskDto.dueAt) : null,
+      creatorId: actor.id,
+      projectId: project.id,
+      groupId: groupId,
+      parentId: parent.id,
+      assigneeId,
+      status: IssueStatus.PLANNED,
+      priority: IssuePriority.MEDIUM,
+      progress: 0,
+      startAt,
+      endAt,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const saved = await this.issueRepository.save(subtask);
     await this.activityLogService.log({
       actorId: actor.id,
-      projectId: parent.project.id,
-      teamId: parent.project.team.id,
+      projectId: project.id,
+      teamId: team.id,
       targetType: ActivityTargetType.ISSUE,
       targetId: parent.id,
       action: IssueActivityAction.SUBTASK_ADDED,
       payload: {
-        after: { subtaskId: subtask.id, title: subtask.title },
+        after: { subtaskId: saved.id, title: addSubtaskDto.title },
       },
     });
 
-    await this.recalculateParentProgress(parent);
+    await this.recalculateParentProgress(parent.id);
     return saved;
   }
 
@@ -477,6 +590,26 @@ export class IssuesService {
     return saved;
   }
 
+  /** 댓글 삭제 */
+  async removeComment(
+    commentId: string,
+    user: User,
+  ) {
+    const comment = await this.issueCommentRepository.findOne({
+      where: { id: commentId },
+      relations: ['issue', 'issue.project', 'issue.project.team'],
+    });
+
+    if (!comment) {
+      throw new NotFoundException('댓글이 없습니다.');
+    }
+
+    const issueId = comment.issue?.id ?? null;
+    await this.issueCommentRepository.remove(comment);
+
+    return { issueId, commentId };
+  }
+
   /** 하위 업무 삭제 */
   async removeSubtask(
     subtaskId: string,
@@ -484,27 +617,35 @@ export class IssuesService {
   ) {
     const subtask = await this.issueRepository.findOne({
       where: { id: subtaskId },
-      relations: ['parent', 'parent.project', 'parent.project.team'],
     });
     if (!subtask) {
       throw new NotFoundException('하위 업무가 없습니다.');
     }
 
-    const parent = subtask.parent;
+    const parentId = subtask.parentId ?? null;
+    const parent = parentId ? await this.issueRepository.findOne({ where: { id: parentId } }) : null;
+    if (!parent) {
+      await this.issueRepository.remove(subtask);
+      return { parentId: null };
+    }
+
+    const project = await this.projectRepository.findOne({ where: { id: parent.projectId }, relations: ['team'] });
+    if (!project) {
+      await this.issueRepository.remove(subtask);
+      return { parentId: parent.id };
+    }
     const payload = {
       subtaskId: subtask.id,
       title: subtask.title,
     };
 
     await this.issueRepository.remove(subtask);
-    if (parent) {
-      await this.recalculateParentProgress(parent);
-    }
+    await this.recalculateParentProgress(parent.id);
 
     await this.activityLogService.log({
       actorId: user.id,
-      projectId: parent.project.id,
-      teamId: parent.project.team.id,
+      projectId: project.id,
+      teamId: project.team.id,
       targetType: ActivityTargetType.ISSUE,
       targetId: parent.id,
       action: IssueActivityAction.SUBTASK_REMOVED,
@@ -524,7 +665,7 @@ export class IssuesService {
   ) {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
-      relations: ['parent', 'project', 'project.team'],
+      relations: ['project', 'project.team'],
     });
 
     if (!issue) {
@@ -535,8 +676,8 @@ export class IssuesService {
     issue.progress = data.progress;
     await this.issueRepository.save(issue);
 
-    if (issue.parent) {
-      await this.recalculateParentProgress(issue.parent);
+    if (issue.parentId) {
+      await this.recalculateParentProgress(issue.parentId);
     }
 
     await this.activityLogService.log({
@@ -557,19 +698,20 @@ export class IssuesService {
 
   /** 상위 업무 진행률 재계산 */
   async recalculateParentProgress(
-    parent: Issue,
+    parentId: string,
   ) {
-    const subtasks = await this.issueRepository.find({
-      where: { parent: { id: parent.id } }
-    });
+    const parent = await this.issueRepository.findOne({ where: { id: parentId } });
+    if (!parent) return;
+
+    const subtasks = await this.issueRepository.find({ where: { parentId } });
     if (!subtasks.length) return;
 
     parent.progress = Math.floor(subtasks.reduce((sum, s) => sum + s.progress, 0) / subtasks.length);
     await this.issueRepository.save(parent);
 
     // 재귀적으로 상위 업무까지 반영
-    if (parent.parent) {
-      await this.recalculateParentProgress(parent.parent);
+    if (parent.parentId) {
+      await this.recalculateParentProgress(parent.parentId);
     }
   }
 
@@ -605,12 +747,47 @@ export class IssuesService {
     });
   }
 
+  private buildIssueTree(issues: Issue[]): Issue[] {
+    const byId = new Map<string, Issue>();
+    for (const issue of issues) {
+      issue.subtasks = [];
+      byId.set(issue.id, issue);
+    }
+
+    const roots: Issue[] = [];
+    for (const issue of issues) {
+      if (issue.parentId) {
+        const parent = byId.get(issue.parentId);
+        if (parent) {
+          parent.subtasks?.push(issue);
+        } else {
+          roots.push(issue);
+        }
+      } else {
+        roots.push(issue);
+      }
+    }
+    return roots;
+  }
+
+  private async findNearestGroupId(parent: Issue): Promise<string | null> {
+    if (parent.groupId) return parent.groupId;
+    let cursorParentId = parent.parentId ?? null;
+    while (cursorParentId) {
+      const cursor = await this.issueRepository.findOne({ where: { id: cursorParentId } });
+      if (!cursor) break;
+      if (cursor.groupId) return cursor.groupId;
+      cursorParentId = cursor.parentId ?? null;
+    }
+    return null;
+  }
+
   async getProjectGantt(
     projectId: string
   ): Promise<GanttIssueDto[]> {
     const issues = await this.issueRepository.find({
       where: { project: { id: projectId } },
-      relations: ['assignee', 'parent'],
+      relations: ['assignee'],
     });
 
     return issues
@@ -621,7 +798,7 @@ export class IssuesService {
         startAt: issue.startAt,
         endAt: issue.endAt,
         progress: issue.progress,
-        parentId: issue.parent?.id,
+        parentId: issue.parentId ?? null,
         assignee: issue.assignee
           ? { id: issue.assignee.id, name: issue.assignee.name }
           : undefined,
