@@ -610,6 +610,26 @@ export class IssuesService {
     return { issueId, commentId };
   }
 
+  /** 댓글 수정 */
+  async updateComment(
+    commentId: string,
+    user: User,
+    content: string,
+  ) {
+    const comment = await this.issueCommentRepository.findOne({
+      where: { id: commentId },
+      relations: ['author'],
+    });
+    if (!comment) {
+      throw new NotFoundException('댓글이 없습니다.');
+    }
+    if (comment.author?.id !== user.id) {
+      throw new UnauthorizedException('권한이 없습니다.');
+    }
+    comment.content = content;
+    return this.issueCommentRepository.save(comment);
+  }
+
   /** 하위 업무 삭제 */
   async removeSubtask(
     subtaskId: string,
@@ -720,10 +740,10 @@ export class IssuesService {
     issueId: string,
     status: IssueStatus,
     user: User,
-  ) {
+  ): Promise<IssueResponseDto> {
     const issue = await this.issueRepository.findOne({
       where: { id: issueId },
-      relations: ['project', 'project.team'],
+      relations: ['assignee', 'creator', 'group', 'project', 'project.team'],
     });
     if (!issue) {
       throw new NotFoundException('해당 이슈가 없습니다.');
@@ -731,7 +751,7 @@ export class IssuesService {
 
     const beforeStatus = issue.status;
     issue.status = status;
-    await this.issueRepository.save(issue);
+    const saved = await this.issueRepository.save(issue);
 
     await this.activityLogService.log({
       actorId: user.id,
@@ -745,6 +765,7 @@ export class IssuesService {
         after: { status },
       },
     });
+    return mapIssuesToResponse(saved);
   }
 
   private buildIssueTree(issues: Issue[]): Issue[] {

@@ -115,6 +115,19 @@ export class IssuesController {
     return this.issuesService.removeComment(commentId, user);
   }
 
+  @ApiOperation({ summary: '댓글 수정' })
+  @Patch('comment/:commentId')
+  updateComment(
+    @Param('commentId') commentId: string,
+    @RequestUser() user: User,
+    @Body() body: { content?: string },
+  ) {
+    if (!body?.content?.trim()) {
+      throw new BadRequestException('content is required');
+    }
+    return this.issuesService.updateComment(commentId, user, body.content.trim());
+  }
+
   @ApiOperation({ summary: '하위 업무 추가' })
   @Post('subtask')
   addSubtask(
