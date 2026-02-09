@@ -8,4 +8,14 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(2)
   displayName?: string;
+
+  @ApiProperty({ example: 'https://example.com/bg.png', description: '프로필 배경 이미지 URL', required: false })
+  @IsOptional()
+  @IsString()
+  backgroundImageUrl?: string;
+
+  @ApiProperty({ example: '커피 한잔 하실래요?', description: '소개', required: false })
+  @IsOptional()
+  @IsString()
+  bio?: string;
 }

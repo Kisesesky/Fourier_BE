@@ -197,7 +197,7 @@ export class IssuesService {
 
     const assignee = createIssueDto.assigneeId
       ? await this.userRepository.findOne({ where: { id: createIssueDto.assigneeId } })
-      : null;
+      : user;
 
     const group = createIssueDto.groupId
       ? await this.issueGroupRepository.findOne({ where: { id: createIssueDto.groupId, project: { id: projectId } } })
@@ -207,6 +207,40 @@ export class IssuesService {
     }
     
     const inheritedGroupId = !createIssueDto.groupId && parent ? await this.findNearestGroupId(parent) : null;
+    let defaultGroupId: string | null = null;
+    let resolvedGroup = group;
+    if (!createIssueDto.groupId && !inheritedGroupId) {
+      const existingGroup = await this.issueGroupRepository.findOne({
+        where: { project: { id: projectId }, name: '프로젝트' },
+      });
+      if (existingGroup) {
+        defaultGroupId = existingGroup.id;
+        resolvedGroup = existingGroup;
+      } else {
+        const createdGroup = await this.issueGroupRepository.save(
+          this.issueGroupRepository.create({
+            name: '프로젝트',
+            color: '#38bdf8',
+            sortOrder: 0,
+            project,
+          }),
+        );
+        defaultGroupId = createdGroup.id;
+        resolvedGroup = createdGroup;
+      }
+    }
+
+    let startAt = createIssueDto.startAt ? new Date(createIssueDto.startAt) : null;
+    let endAt = createIssueDto.endAt ? new Date(createIssueDto.endAt) : null;
+    if (!startAt && !endAt) {
+      const base = project.createdAt ? new Date(project.createdAt) : new Date();
+      startAt = base;
+      endAt = base;
+    } else if (startAt && !endAt) {
+      endAt = startAt;
+    } else if (!startAt && endAt) {
+      startAt = endAt;
+    }
 
     const issue = this.issueRepository.create({
       ...createIssueDto,
@@ -217,12 +251,12 @@ export class IssuesService {
       parentId: parent?.id ?? null,
       assignee,
       assigneeId: assignee?.id ?? null,
-      group,
-      groupId: group?.id ?? inheritedGroupId ?? null,
+      group: resolvedGroup,
+      groupId: resolvedGroup?.id ?? inheritedGroupId ?? defaultGroupId ?? null,
       status: createIssueDto.status ?? IssueStatus.PLANNED,
       progress: createIssueDto.progress ?? 0,
-      startAt: createIssueDto.startAt ? new Date(createIssueDto.startAt) : null,
-      endAt: createIssueDto.endAt ? new Date(createIssueDto.endAt) : null,
+      startAt,
+      endAt,
     });
 
 
@@ -242,7 +276,11 @@ export class IssuesService {
       },
     });
 
-    return mapIssuesToResponse(saved);
+    const created = await this.issueRepository.findOne({
+      where: { id: saved.id },
+      relations: ['creator', 'assignee', 'group', 'comments', 'comments.author'],
+    });
+    return mapIssuesToResponse(created ?? saved);
   }
 
   /** 이슈 수정 */
@@ -277,7 +315,12 @@ export class IssuesService {
       endAt: updateIssueDto.endAt ? new Date(updateIssueDto.endAt) : issue.endAt,
     });
 
-    const saved = await this.issueRepository.save(issue);
+    await this.issueRepository.save(issue);
+    const refreshed = await this.issueRepository.findOne({
+      where: { id: issue.id },
+      relations: ['assignee', 'creator', 'group', 'project', 'project.team'],
+    });
+    const saved = refreshed ?? issue;
     const after = snapshot(saved);
 
     const isDateChanged =
@@ -751,7 +794,7 @@ export class IssuesService {
 
     const beforeStatus = issue.status;
     issue.status = status;
-    const saved = await this.issueRepository.save(issue);
+    await this.issueRepository.save(issue);
 
     await this.activityLogService.log({
       actorId: user.id,
@@ -765,7 +808,11 @@ export class IssuesService {
         after: { status },
       },
     });
-    return mapIssuesToResponse(saved);
+    const refreshed = await this.issueRepository.findOne({
+      where: { id: issue.id },
+      relations: ['assignee', 'creator', 'group', 'project', 'project.team'],
+    });
+    return mapIssuesToResponse(refreshed ?? issue);
   }
 
   private buildIssueTree(issues: Issue[]): Issue[] {

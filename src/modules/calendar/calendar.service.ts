@@ -338,6 +338,13 @@ export class CalendarService {
 
   async deleteFolder(folderId: string, user: User) {
     const folder = await this.canManageFolder(folderId, user);
+    const defaultFolder = await this.calendarFolderRepository.findOne({
+      where: { project: { id: folder.project.id }, isActive: true },
+      order: { createdAt: 'ASC' },
+    });
+    if (defaultFolder && defaultFolder.id === folder.id) {
+      throw new ForbiddenException('기본 캘린더 폴더는 삭제할 수 없습니다.');
+    }
     folder.isActive = false;
     await this.calendarFolderRepository.save(folder);
     return { success: true };
@@ -651,6 +658,52 @@ export class CalendarService {
     return category;
   }
 
+  private async getOrCreateIssueCalendar(projectId: string, user: User) {
+    const existing = await this.calendarRepository.findOne({
+      where: { project: { id: projectId }, name: '이슈 보드 캘린더', isActive: true },
+      relations: ['folder'],
+    });
+    if (existing) return existing;
+    const folder = await this.getOrCreateDefaultFolder(projectId, user);
+    const calendar = await this.calendarRepository.save(
+      this.calendarRepository.create({
+        project: { id: projectId },
+        name: '이슈 보드 캘린더',
+        type: CalendarType.TEAM,
+        owner: user,
+        color: '#f59e0b',
+        folder,
+        isActive: true,
+      }),
+    );
+    await this.calendarMemberRepository.save(
+      this.calendarMemberRepository.create({
+        calendar,
+        user,
+        role: CalendarMemberRole.OWNER,
+      }),
+    );
+    return calendar;
+  }
+
+  private async getOrCreateIssueCategory(projectId: string, calendar: Calendar) {
+    const existing = await this.calendarCategoryRepository.findOne({
+      where: { project: { id: projectId }, calendar: { id: calendar.id }, name: '이슈', isActive: true },
+      relations: ['calendar'],
+    });
+    if (existing) return existing;
+    return this.calendarCategoryRepository.save(
+      this.calendarCategoryRepository.create({
+        name: '이슈',
+        color: '#f97316',
+        project: { id: projectId },
+        calendar,
+        isDefault: false,
+        isActive: true,
+      }),
+    );
+  }
+
   async updateEvent(
     eventId: string,
     updateCalendarEventDto: UpdateCalendarEventDto,
@@ -840,16 +893,28 @@ export class CalendarService {
   async createEventFromIssue(
     issue: Issue
   ) {
-    const category = await this.getDefaultCategory(issue.project.id);
+    const fullIssue = issue.creator
+      ? issue
+      : await this.issueRepository.findOne({
+          where: { id: issue.id },
+          relations: ['creator', 'project'],
+        });
+    if (!fullIssue) {
+      throw new NotFoundException('이슈를 찾을 수 없습니다.');
+    }
+    const owner = fullIssue.creator;
+    const calendar = await this.getOrCreateIssueCalendar(fullIssue.project.id, owner);
+    const category = await this.getOrCreateIssueCategory(fullIssue.project.id, calendar);
 
     return this.calendarEventRepository.save({
-      title: issue.title,
-      project: { id: issue.project.id },
-      calendar: category.calendar,
+      title: fullIssue.title,
+      project: { id: fullIssue.project.id },
+      calendar,
       category,
-      startAt: issue.startAt,
-      endAt: issue.endAt,
-      linkedIssueId: issue.id,
+      createdBy: owner,
+      startAt: fullIssue.startAt,
+      endAt: fullIssue.endAt,
+      linkedIssueId: fullIssue.id,
       sourceType: 'issue',
     });
   }
@@ -857,11 +922,27 @@ export class CalendarService {
   async updateEventFromIssue(issue: Issue) {
     if (!issue.calendarEventId) return;
 
-    await this.calendarEventRepository.update(issue.calendarEventId, {
-      title: issue.title,
-      startAt: issue.startAt,
-      endAt: issue.endAt,
+    const fullIssue = issue.creator
+      ? issue
+      : await this.issueRepository.findOne({
+          where: { id: issue.id },
+          relations: ['creator', 'project'],
+        });
+    if (!fullIssue) return;
+    const owner = fullIssue.creator;
+    const calendar = await this.getOrCreateIssueCalendar(fullIssue.project.id, owner);
+    const category = await this.getOrCreateIssueCategory(fullIssue.project.id, calendar);
+    const event = await this.calendarEventRepository.findOne({
+      where: { id: issue.calendarEventId },
+      relations: ['category', 'calendar'],
     });
+    if (!event) return;
+    event.title = fullIssue.title;
+    event.startAt = fullIssue.startAt;
+    event.endAt = fullIssue.endAt;
+    event.calendar = calendar;
+    event.category = category;
+    await this.calendarEventRepository.save(event);
   }
 
   async deleteEventByIssue(

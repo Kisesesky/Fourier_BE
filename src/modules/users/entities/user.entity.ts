@@ -19,6 +19,12 @@ export class User extends BaseEntity {
   avatarUrl: string | null;
 
   @Column({ nullable: true })
+  backgroundImageUrl: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  bio: string | null;
+
+  @Column({ nullable: true })
   password: string | null;
 
   @Column({ type: 'varchar', })

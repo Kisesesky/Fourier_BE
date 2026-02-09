@@ -13,6 +13,10 @@ export class UserResponseDto extends BaseResponseDto {
   displayName?: string;
   @ApiProperty({ example: 'https://example.com/avatar.png', description: '프로필 이미지', required: false })
   avatarUrl?: string;
+  @ApiProperty({ example: 'https://example.com/background.png', description: '프로필 배경 이미지', required: false })
+  backgroundImageUrl?: string;
+  @ApiProperty({ example: '커피 한잔 하실래요?', description: '소개', required: false })
+  bio?: string;
 
   constructor(user: User) {
     super(user);
@@ -21,5 +25,7 @@ export class UserResponseDto extends BaseResponseDto {
     this.name = user.name;
     this.displayName = user.displayName ?? undefined;
     this.avatarUrl = user.avatarUrl ?? undefined;
+    this.backgroundImageUrl = user.backgroundImageUrl ?? undefined;
+    this.bio = user.bio ?? undefined;
   }
 }

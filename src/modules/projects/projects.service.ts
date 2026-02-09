@@ -139,6 +139,13 @@ export class ProjectsService {
       }
     }
 
+    // 5. 기본 이슈 테이블 생성 (프로젝트)
+    try {
+      await this.issuesService.createIssueGroup(project.id, '프로젝트', '#38bdf8');
+    } catch {
+      // ignore
+    }
+
     // 5. 프로젝트 기본 채널 가져오기 / 생성
     let defaultChannel = await this.channelRepository.findOne({
       where: { project: { id: project.id }, isDefault: true },
@@ -332,6 +339,8 @@ export class ProjectsService {
       name: member.user.displayName ?? member.user.name,
       email: member.user.email,
       avatarUrl: member.user.avatarUrl,
+      backgroundImageUrl: member.user.backgroundImageUrl,
+      bio: member.user.bio,
       role: member.role,
     }));
   }

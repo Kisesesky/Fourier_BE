@@ -37,6 +37,8 @@ export class UsersController {
       properties: {
         avatar: { type: 'string', format: 'binary', nullable: true },
         displayName: { type: 'string', example: '김철수' },
+        backgroundImageUrl: { type: 'string', example: 'https://example.com/background.png', nullable: true },
+        bio: { type: 'string', example: '커피 한잔 하실래요?', nullable: true },
       },
     },
   })
@@ -61,8 +63,16 @@ export class UsersController {
       updatedAvatar = await this.usersService.updateAvatar(user, file);
     }
 
-    if (updateUserDto.displayName) {
-      await this.usersService.updateName(user.id, updateUserDto.displayName);
+    if (
+      updateUserDto.displayName !== undefined ||
+      updateUserDto.backgroundImageUrl !== undefined ||
+      updateUserDto.bio !== undefined
+    ) {
+      await this.usersService.updateProfile(user.id, {
+        displayName: updateUserDto.displayName,
+        backgroundImageUrl: updateUserDto.backgroundImageUrl,
+        bio: updateUserDto.bio,
+      });
     }
 
     return { success: true, message: '프로필이 업데이트되었습니다.' };

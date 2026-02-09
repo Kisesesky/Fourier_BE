@@ -14,6 +14,12 @@ export class ProjectMemberResponseDto {
   @ApiProperty({ example: 'https://example.com/avatar.png', nullable: true })
   avatarUrl?: string | null;
 
+  @ApiProperty({ example: 'https://example.com/background.png', nullable: true })
+  backgroundImageUrl?: string | null;
+
+  @ApiProperty({ example: '커피 한잔 하실래요?', nullable: true })
+  bio?: string | null;
+
   @ApiProperty({ enum: ProjectRole })
   role: ProjectRole;
 }

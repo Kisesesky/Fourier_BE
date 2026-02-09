@@ -121,11 +121,58 @@ export class UsersService {
   }
 
   async updateName(userId: string, displayName: string) {
-    const exists = await this.usersRepository.findOne({ where : { name: displayName }})
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      throw new BadRequestException('이름은 비어 있을 수 없습니다.');
+    }
+
+    const exists = await this.usersRepository
+      .createQueryBuilder('user')
+      .where('user.id != :userId', { userId })
+      .andWhere('(user.displayName = :displayName OR user.name = :displayName)', { displayName: trimmed })
+      .getOne();
+
     if (exists) {
       throw new BadRequestException('이미 사용 중인 이름입니다.');
     }
-    await this.usersRepository.update(userId, { name: displayName });
+    await this.usersRepository.update(userId, { displayName: trimmed });
+  }
+
+  async updateProfile(userId: string, payload: { displayName?: string; backgroundImageUrl?: string; bio?: string }) {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+
+    if (payload.displayName !== undefined) {
+      const trimmed = payload.displayName.trim();
+      if (!trimmed) {
+        throw new BadRequestException('이름은 비어 있을 수 없습니다.');
+      }
+
+      const exists = await this.usersRepository
+        .createQueryBuilder('user')
+        .where('user.id != :userId', { userId })
+        .andWhere('(user.displayName = :displayName OR user.name = :displayName)', { displayName: trimmed })
+        .getOne();
+
+      if (exists) {
+        throw new BadRequestException('이미 사용 중인 이름입니다.');
+      }
+      user.displayName = trimmed;
+    }
+
+    if (payload.bio !== undefined) {
+      const trimmedBio = payload.bio.trim();
+      user.bio = trimmedBio.length > 0 ? trimmedBio : null;
+    }
+
+    if (payload.backgroundImageUrl !== undefined) {
+      const trimmedBackground = payload.backgroundImageUrl.trim();
+      user.backgroundImageUrl = trimmedBackground.length > 0 ? trimmedBackground : null;
+    }
+
+    return this.usersRepository.save(user);
   }
 
   async updateAvatar(user: User, file?: Express.Multer.File) {
