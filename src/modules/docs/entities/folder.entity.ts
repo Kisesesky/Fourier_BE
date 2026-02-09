@@ -2,6 +2,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { Document } from './document.entity';
 import { FolderMember } from './folder-member.entity';
+import { Project } from 'src/modules/projects/entities/project.entity';
 
 @Entity()
 export class Folder {
@@ -10,6 +11,9 @@ export class Folder {
 
   @Column()
   name: string;
+
+  @ManyToOne(() => Project, { nullable: true, onDelete: 'CASCADE' })
+  project?: Project;
 
   @ManyToOne(() => Folder, (folder) => folder.children, { nullable: true, onDelete: 'CASCADE' })
   parent?: Folder;

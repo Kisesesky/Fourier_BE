@@ -4,6 +4,7 @@ import { DocsService } from './docs.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
+import { UpdateFolderDto } from './dto/update-folder.dto';
 import { RequestUser } from 'src/common/decorators/request-user.decorator';
 import { User } from '../users/entities/user.entity';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
@@ -14,6 +15,8 @@ import { FolderResponseDto } from './dto/folder-response.dto';
 import { RequireDocPermission } from './decorators/require-doc-permission.decorator';
 import { DocPermission } from './constants/doc-permission.enum';
 import { UpdateDocPermissionDto } from './dto/update-document-permission.dto';
+import { CreateDocumentCommentDto } from './dto/create-document-comment.dto';
+import { UpdateDocumentCommentDto } from './dto/update-document-comment.dto';
 
 @ApiTags('docs')
 @ApiBearerAuth('access-token')
@@ -32,6 +35,25 @@ export class DocsController {
     @RequestUser() user: User
   ) {
     return this.docsService.createFolder(createFolderDto, user);
+  }
+
+  @ApiOperation({ summary: '폴더 목록 조회' })
+  @Get('folders')
+  getFolders(
+    @RequestUser() user: User,
+    @Query('projectId') projectId: string,
+  ) {
+    if (!projectId) throw new BadRequestException('projectId is required');
+    return this.docsService.getFolders(user.id, projectId);
+  }
+
+  @ApiOperation({ summary: '폴더 수정' })
+  @Patch('folder/:id')
+  updateFolder(
+    @Param('id') id: string,
+    @Body() updateFolderDto: UpdateFolderDto,
+  ) {
+    return this.docsService.updateFolder(id, updateFolderDto);
   }
 
   @ApiOperation({ summary: '폴더 이동'})
@@ -61,6 +83,16 @@ export class DocsController {
     return this.docsService.createDocument(createDocumentDto, user);
   }
 
+  @ApiOperation({ summary: '문서 목록 조회' })
+  @Get('documents')
+  getDocuments(
+    @RequestUser() user: User,
+    @Query('projectId') projectId: string,
+  ) {
+    if (!projectId) throw new BadRequestException('projectId is required');
+    return this.docsService.getDocuments(user.id, projectId);
+  }
+
   @ApiOperation({ summary: '문서 수정'})
   @ApiOkResponse({ description: '문서 수정 성공' })
   @Patch('document/:id')
@@ -88,6 +120,44 @@ export class DocsController {
     @RequestUser() user: User,
   ) {
     return this.docsService.searchDocs(user.id, q);
+  }
+
+  @ApiOperation({ summary: '문서 댓글 목록 조회' })
+  @Get('document/:id/comments')
+  getDocumentComments(
+    @Param('id') documentId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.docsService.getDocumentComments(documentId, user);
+  }
+
+  @ApiOperation({ summary: '문서 댓글 작성' })
+  @Post('document/:id/comment')
+  addDocumentComment(
+    @Param('id') documentId: string,
+    @RequestUser() user: User,
+    @Body() body: CreateDocumentCommentDto,
+  ) {
+    return this.docsService.addDocumentComment(documentId, user, body.content);
+  }
+
+  @ApiOperation({ summary: '문서 댓글 수정' })
+  @Patch('comment/:commentId')
+  updateDocumentComment(
+    @Param('commentId') commentId: string,
+    @RequestUser() user: User,
+    @Body() body: UpdateDocumentCommentDto,
+  ) {
+    return this.docsService.updateDocumentComment(commentId, user, body.content);
+  }
+
+  @ApiOperation({ summary: '문서 댓글 삭제' })
+  @Delete('comment/:commentId')
+  removeDocumentComment(
+    @Param('commentId') commentId: string,
+    @RequestUser() user: User,
+  ) {
+    return this.docsService.removeDocumentComment(commentId, user);
   }
 
   @ApiOperation({ summary: '문서 분석 집계' })

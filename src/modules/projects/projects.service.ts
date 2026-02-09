@@ -237,10 +237,12 @@ export class ProjectsService {
 
     // 8. Docs 루트 폴더/문서 생성
     const rootFolder = await this.docsService.createFolder({
-      name: 'Docs',
+      projectId: project.id,
+      name: '프로젝트 폴더',
     }, user);
 
     await this.docsService.createDocument({
+      projectId: project.id,
       title: '첫 문서',
       content: '프로젝트 문서 작성 시작',
       folderId: rootFolder.id,

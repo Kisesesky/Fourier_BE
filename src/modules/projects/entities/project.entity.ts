@@ -9,6 +9,8 @@ import { Channel } from 'src/modules/chat/entities/channel.entity';
 import { Issue } from 'src/modules/issues/entities/issue.entity';
 import { IssueGroup } from 'src/modules/issues/entities/issue-group.entity';
 import { ProjectFavorite } from './project-favorite.entity';
+import { Document } from 'src/modules/docs/entities/document.entity';
+import { Folder } from 'src/modules/docs/entities/folder.entity';
 
 @Entity()
 export class Project {
@@ -50,6 +52,12 @@ export class Project {
 
   @OneToMany(() => ProjectFavorite, (favorite) => favorite.project)
   favorites: ProjectFavorite[];
+
+  @OneToMany(() => Document, (document) => document.project)
+  documents: Document[];
+
+  @OneToMany(() => Folder, (folder) => folder.project)
+  folders: Folder[];
 
   @CreateDateColumn()
   createdAt: Date;

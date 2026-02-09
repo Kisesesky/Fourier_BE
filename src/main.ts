@@ -13,6 +13,7 @@ import { AppConfigService } from './config/app/config.service';
 import { RedisConfigService } from './config/redis/config.service';
 import { RedisIoAdapter } from './config/redis/socket-redis.adapter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import * as express from 'express';
 
 async function bootstrap() {
   // Migration 선 실행 후 
@@ -33,6 +34,8 @@ async function bootstrap() {
   app.useWebSocketAdapter(redisIoAdapter);
 
   app.use(cookieParser());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   app.useGlobalPipes(
     new ValidationPipe({

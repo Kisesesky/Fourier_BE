@@ -3,6 +3,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsUUID } from 'class-validator';
 
 export class CreateFolderDto {
+  @ApiProperty({ example: 'project-uuid', description: '프로젝트 ID' })
+  @IsUUID()
+  projectId: string;
+
   @ApiProperty({ example: '기획', description: '폴더 이름' })
   @IsString()
   name: string;

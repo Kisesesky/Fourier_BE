@@ -4,7 +4,9 @@ import { Folder } from './folder.entity';
 import { DocumentVersion } from './document-version.entity';
 import { DocumentCursor } from './document-cursor.entity';
 import { DocumentMember } from './document-member.entity';
+import { DocumentComment } from './document-comment.entity';
 import { User } from 'src/modules/users/entities/user.entity';
+import { Project } from 'src/modules/projects/entities/project.entity';
 
 @Entity()
 export class Document {
@@ -16,6 +18,12 @@ export class Document {
 
   @Column({ type: 'text', nullable: true })
   content: string;
+
+  @Column({ default: false })
+  starred: boolean;
+
+  @ManyToOne(() => Project, { nullable: true, onDelete: 'CASCADE' })
+  project?: Project;
 
   @ManyToOne(() => Folder, (folder) => folder.documents, { nullable: true, onDelete: 'CASCADE' })
   folder?: Folder;
@@ -31,6 +39,9 @@ export class Document {
 
   @OneToMany(() => DocumentCursor, (cursor) => cursor.document)
   cursors: DocumentCursor[];
+
+  @OneToMany(() => DocumentComment, (comment) => comment.document)
+  comments: DocumentComment[];
 
   @Column({ type: 'tsvector', select: false })
   searchVector: string;
