@@ -525,12 +525,17 @@ export class ChatService {
     }
 
     if (!fileIds.length && hasContent && isLongText(sendChannelMessageDto.content)) {
-      const textFile = await this.filesService.createTextFile(
-        sendChannelMessageDto.content!,
-        user,
-      );
-
-      fileIds = [textFile.id];
+      try {
+        const textFile = await this.filesService.createTextFile(
+          sendChannelMessageDto.content!,
+          user,
+        );
+        fileIds = [textFile.id];
+      } catch (error) {
+        this.logger.warn(
+          `채널 긴 텍스트 파일 변환 실패 - 일반 텍스트로 저장합니다. channelId=${sendChannelMessageDto.channelId}, userId=${user.id}`,
+        );
+      }
     }
 
     // 1. 메시지 생성
@@ -682,11 +687,17 @@ export class ChatService {
     }
 
     if (!fileIds.length && hasContent && isLongText(sendDmMessageDto.content)) {
-      const textFile = await this.filesService.createTextFile(
-        sendDmMessageDto.content!,
-        user,
-      );
-      fileIds = [textFile.id];
+      try {
+        const textFile = await this.filesService.createTextFile(
+          sendDmMessageDto.content!,
+          user,
+        );
+        fileIds = [textFile.id];
+      } catch (error) {
+        this.logger.warn(
+          `DM 긴 텍스트 파일 변환 실패 - 일반 텍스트로 저장합니다. roomId=${sendDmMessageDto.roomId}, userId=${user.id}`,
+        );
+      }
     }
 
     // 1. 메시지 생성
