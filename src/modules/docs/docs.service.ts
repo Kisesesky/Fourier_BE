@@ -331,9 +331,15 @@ export class DocsService {
 
   async getDocAnalytics(
     user: User,
-    opts: { granularity: 'hourly' | 'daily' | 'monthly'; date?: string; month?: string; year?: string },
+    opts: {
+      granularity: 'hourly' | 'daily' | 'monthly';
+      date?: string;
+      month?: string;
+      year?: string;
+      projectId?: string;
+    },
   ) {
-    const { granularity, date, month, year } = opts;
+    const { granularity, date, month, year, projectId } = opts;
     let start: Date;
     let end: Date;
     let counts: number[] = [];
@@ -362,14 +368,18 @@ export class DocsService {
       counts = Array.from({ length: 12 }, () => 0);
     }
 
-    const rows = await this.documentRepository
+    const qb = this.documentRepository
       .createQueryBuilder('document')
       .leftJoin('document.members', 'member')
       .where('member.userId = :userId', { userId: user.id })
       .andWhere('document.createdAt >= :start', { start })
-      .andWhere('document.createdAt < :end', { end })
-      .select(['document.createdAt'])
-      .getMany();
+      .andWhere('document.createdAt < :end', { end });
+
+    if (projectId) {
+      qb.andWhere('document.projectId = :projectId', { projectId });
+    }
+
+    const rows = await qb.select(['document.createdAt']).getMany();
 
     rows.forEach((row) => {
       const dt = new Date(row.createdAt);

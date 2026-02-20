@@ -168,9 +168,16 @@ export class DocsController {
     @Query('date') date?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Query('projectId') projectId?: string,
   ) {
     if (!granularity) throw new BadRequestException('granularity is required');
-    return this.docsService.getDocAnalytics(user, { granularity, date, month, year });
+    return this.docsService.getDocAnalytics(user, {
+      granularity,
+      date,
+      month,
+      year,
+      projectId,
+    });
   }
 
   @ApiOperation({
