@@ -21,11 +21,12 @@ import { FilesModule } from './modules/files/files.module';
 import { IssuesModule } from './modules/issues/issues.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { MentionModule } from './modules/mention/mention.module';
+import { SupportModule } from './modules/support/support.module';
 
 @Module({
   imports: [
     DatabaseModule,
-    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, TeamModule, ProjectsModule, NotificationModule, FilesModule, ActivityLogModule, MentionModule],
+    ConfigRootModule, DbConfigModule, AppConfigModule, AuthModule, ChatModule, IssuesModule, CalendarModule, DocsModule, MembersModule, UsersModule, GcsModule, VerificationModule, WorkspaceModule, TeamModule, ProjectsModule, NotificationModule, FilesModule, ActivityLogModule, MentionModule, SupportModule],
   controllers: [AppController],
   providers: [AppService],
 })
