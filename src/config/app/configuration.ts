@@ -14,5 +14,6 @@ export default registerAs('app', () => ({
   swaggerPassword: process.env.SWAGGER_PASSWORD,
   nodeEnv: process.env.NODE_ENV,
   defaultAvatar: process.env.DEFAULT_AVATAR,
-  sfuRoomSnapshotTtl: process.env.SFU_ROOM_SNAPSHOT_TTL
+  sfuRoomSnapshotTtl: Number(process.env.SFU_ROOM_SNAPSHOT_TTL ?? 3600),
+  sfuAnnouncedIp: process.env.SFU_ANNOUNCED_IP
 }));

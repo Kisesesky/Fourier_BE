@@ -6,7 +6,9 @@ import { SfuStore } from './sfu.store';
 
 @Injectable()
 export class RoomService {
-  constructor(private readonly store: SfuStore) {}
+  constructor(
+    private readonly store: SfuStore
+  ) {}
 
   ensureRoom(roomId: string) {
     if (!this.store.rooms.has(roomId)) {

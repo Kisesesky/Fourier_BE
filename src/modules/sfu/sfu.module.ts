@@ -9,9 +9,10 @@ import { SfuFacade } from './sfu.facade';
 import { SfuStore } from './sfu.store';
 import { SnapshotService } from './snapshot.service';
 import { TransportService } from './transport.service';
+import { AppConfigModule } from 'src/config/app/config.module';
 
 @Module({
-  imports: [RedisConfigModule],
+  imports: [RedisConfigModule, AppConfigModule],
   providers: [
     SfuStore,
     MediasoupService,

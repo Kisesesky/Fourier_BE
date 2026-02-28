@@ -218,6 +218,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  @OnEvent('sfu.worker.died')
+  handleSfuWorkerDied() {
+    this.server.emit('sfu:worker-died', {
+      message: 'SFU worker died. Reconnecting required.',
+    });
+  }
+
+  @OnEvent('sfu.worker.ready')
+  handleSfuWorkerReady() {
+    this.server.emit('sfu:worker-ready', {
+      message: 'SFU worker is ready.',
+    });
+  }
+
   /** 채널 메시지 전송 */
   @SubscribeMessage('send-channel-message')
   async handleSendChannel(

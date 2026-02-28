@@ -15,4 +15,5 @@ export const appEnvSchema = {
 	NODE_ENV: Joi.string().valid('development', 'production').required(),
 	DEFAULT_AVATAR: Joi.string().required(),
 	SFU_ROOM_SNAPSHOT_TTL: Joi.number().required(),
+	SFU_ANNOUNCED_IP: Joi.string().optional(),
 };

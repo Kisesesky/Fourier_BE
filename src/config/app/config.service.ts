@@ -59,4 +59,8 @@ export class AppConfigService {
   get sfuRoomSnapshotTtl(): number {
     return this.configService.getOrThrow('app.sfuRoomSnapshotTtl');
   }
+
+  get sfuAnnouncedIp(): string | undefined {
+    return this.configService.get<string>('appConfig.sfuAnnouncedIp') || undefined;
+  }
 }

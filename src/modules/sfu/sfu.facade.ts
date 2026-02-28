@@ -60,69 +60,69 @@ export class SfuFacade {
     return this.mediasoupService.getRouterRtpCapabilities(roomId);
   }
 
-  joinRoom(dto: JoinRoomDto) {
-    const joined = this.roomService.joinRoom(dto.roomId, dto.userId, dto.socketId);
-    void this.snapshotService.persistRoomSnapshot(dto.roomId);
+  joinRoom(JoinRoomDto: JoinRoomDto) {
+    const joined = this.roomService.joinRoom(JoinRoomDto.roomId, JoinRoomDto.userId, JoinRoomDto.socketId);
+    void this.snapshotService.persistRoomSnapshot(JoinRoomDto.roomId);
     return joined;
   }
 
-  leaveRoom(dto: LeaveRoomDto) {
-    this.roomService.leaveRoom(dto.roomId, dto.userId);
-    void this.snapshotService.persistRoomSnapshot(dto.roomId);
+  leaveRoom(leaveRoomDto: LeaveRoomDto) {
+    this.roomService.leaveRoom(leaveRoomDto.roomId, leaveRoomDto.userId);
+    void this.snapshotService.persistRoomSnapshot(leaveRoomDto.roomId);
   }
 
-  leaveUserFromAllRooms(dto: LeaveUserFromAllRoomsDto) {
-    const leftRoomIds = this.roomService.leaveUserFromAllRooms(dto.userId);
+  leaveUserFromAllRooms(LeaveUserFromAllRoomsDto: LeaveUserFromAllRoomsDto) {
+    const leftRoomIds = this.roomService.leaveUserFromAllRooms(LeaveUserFromAllRoomsDto.userId);
     this.persistSnapshots(leftRoomIds);
     return leftRoomIds;
   }
 
-  createWebRtcTransport(dto: CreateWebRtcTransportDto) {
-    return this.transportService.createWebRtcTransport(dto.roomId, dto.userId, dto.direction);
+  createWebRtcTransport(createWebRtcTransportDto: CreateWebRtcTransportDto) {
+    return this.transportService.createWebRtcTransport(createWebRtcTransportDto.roomId, createWebRtcTransportDto.userId, createWebRtcTransportDto.direction);
   }
 
-  connectTransport(dto: ConnectTransportDto) {
-    return this.transportService.connectTransport(dto.transportId, dto.dtlsParameters);
+  connectTransport(connectTransportDto: ConnectTransportDto) {
+    return this.transportService.connectTransport(connectTransportDto.transportId, connectTransportDto.dtlsParameters);
   }
 
-  async produce(dto: ProduceDto) {
-    const produced = await this.producerService.produce(dto);
-    this.persistSnapshot(dto.roomId);
+  async produce(produceDto: ProduceDto) {
+    const produced = await this.producerService.produce(produceDto);
+    this.persistSnapshot(produceDto.roomId);
     return produced;
   }
 
-  consume(dto: ConsumeDto) {
-    return this.consumerService.consume(dto);
+  consume(consumeDto: ConsumeDto) {
+    return this.consumerService.consume(consumeDto);
   }
 
-  closeProducer(dto: CloseProducerDto) {
-    this.producerService.closeProducer(dto.roomId, dto.userId, dto.producerId);
-    this.persistSnapshot(dto.roomId);
+  closeProducer(closeProducerDto: CloseProducerDto) {
+    this.producerService.closeProducer(closeProducerDto.roomId, closeProducerDto.userId, closeProducerDto.producerId);
+    this.persistSnapshot(closeProducerDto.roomId);
   }
 
-  closeUserProducers(dto: CloseUserProducersDto) {
-    const producerIds = this.producerService.closeUserProducers(dto.roomId, dto.userId);
-    this.persistSnapshot(dto.roomId);
+  closeUserProducers(closeUserProducersDto: CloseUserProducersDto) {
+    const producerIds = this.producerService.closeUserProducers(closeUserProducersDto.roomId, closeUserProducersDto.userId);
+    this.persistSnapshot(closeUserProducersDto.roomId);
     return producerIds;
   }
 
-  listRoomProducers(dto: ListRoomProducersDto) {
-    return this.producerService.listRoomProducers(dto.roomId, dto.exceptUserId);
+  listRoomProducers(listRoomProducersDto: ListRoomProducersDto) {
+    return this.producerService.listRoomProducers(listRoomProducersDto.roomId, listRoomProducersDto.exceptUserId);
   }
 
-  getUserMediaState(dto: GetUserMediaStateDto) {
-    return this.roomService.getUserMediaState(dto.roomId, dto.userId);
+  getUserMediaState(getUserMediaStateDto: GetUserMediaStateDto) {
+    return this.roomService.getUserMediaState(getUserMediaStateDto.roomId, getUserMediaStateDto.userId);
   }
 
-  listRoomMediaStates(dto: ListRoomMediaStatesDto) {
-    return this.roomService.listRoomMediaStates(dto.roomId, dto.exceptUserId);
+  listRoomMediaStates(listRoomMediaStatesDto: ListRoomMediaStatesDto) {
+    return this.roomService.listRoomMediaStates(listRoomMediaStatesDto.roomId, listRoomMediaStatesDto.exceptUserId);
   }
 
-  getPeerSocketId(dto: GetPeerSocketIdDto) {
-    return this.roomService.getPeerSocketId(dto.roomId, dto.userId);
+  getPeerSocketId(getPeerSocketIdDto: GetPeerSocketIdDto) {
+    return this.roomService.getPeerSocketId(getPeerSocketIdDto.roomId, getPeerSocketIdDto.userId);
   }
 
-  getPersistedRoomSnapshot(dto: GetPersistedRoomSnapshotDto) {
-    return this.snapshotService.getPersistedRoomSnapshot(dto.roomId, dto.exceptUserId);
+  getPersistedRoomSnapshot(getPersistedRoomSnapshotDto: GetPersistedRoomSnapshotDto) {
+    return this.snapshotService.getPersistedRoomSnapshot(getPersistedRoomSnapshotDto.roomId, getPersistedRoomSnapshotDto.exceptUserId);
   }
 }

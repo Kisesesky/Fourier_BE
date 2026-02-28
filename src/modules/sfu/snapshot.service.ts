@@ -5,21 +5,18 @@ import { PersistedRoomSnapshot } from './types/persisted.room.types';
 import { MediaState } from './types/media.types';
 import { RoomService } from './room.service';
 import { SfuStore } from './sfu.store';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from 'src/config/app/config.service';
 
 @Injectable()
 export class SnapshotService {
   private readonly logger = new Logger(SnapshotService.name);
-  private readonly roomStateTtlSeconds: number;
 
   constructor(
     private readonly redisService: RedisService,
     private readonly store: SfuStore,
     private readonly roomService: RoomService,
-    private readonly configService: ConfigService,
-  ) {
-    this.roomStateTtlSeconds = this.configService.get<number>('SFU_ROOM_SNAPSHOT_TTL', 60 * 60);
-  }
+    private readonly appConfigService: AppConfigService,
+  ) {}
 
   getRoomSnapshotKey(roomId: string) {
     return `sfu:room:${roomId}:snapshot`;
@@ -49,7 +46,7 @@ export class SnapshotService {
       await this.redisService.set(
         this.getRoomSnapshotKey(roomId),
         JSON.stringify(snapshot),
-        this.roomStateTtlSeconds,
+        this.appConfigService.sfuRoomSnapshotTtl,
       );
     } catch (error: any) {
       this.logger.warn(`failed to persist snapshot for room=${roomId}: ${error?.message ?? 'unknown'}`);

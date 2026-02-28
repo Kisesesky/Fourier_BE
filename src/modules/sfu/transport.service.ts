@@ -6,6 +6,7 @@ import { RoomService } from './room.service';
 import { TransportDirection } from './types/media.types';
 import { TransportState } from './types/transport.types';
 import { SfuStore } from './sfu.store';
+import { AppConfigService } from 'src/config/app/config.service';
 
 @Injectable()
 export class TransportService {
@@ -13,6 +14,7 @@ export class TransportService {
     private readonly store: SfuStore,
     private readonly roomService: RoomService,
     private readonly mediasoupService: MediasoupService,
+    private readonly appConfigService: AppConfigService,
   ) {}
 
   async createWebRtcTransport(roomId: string, userId: string, direction: TransportDirection) {
@@ -25,7 +27,7 @@ export class TransportService {
 
     if (this.mediasoupService.isAvailable() && room.router) {
       const transport = await room.router.createWebRtcTransport({
-        listenIps: [{ ip: '0.0.0.0', announcedIp: process.env.SFU_ANNOUNCED_IP || undefined }],
+        listenIps: [{ ip: '0.0.0.0', announcedIp: this.appConfigService.sfuAnnouncedIp }],
         enableUdp: true,
         enableTcp: true,
         preferUdp: true,
