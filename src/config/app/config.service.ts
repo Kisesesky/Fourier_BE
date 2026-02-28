@@ -55,4 +55,8 @@ export class AppConfigService {
   get defaultAvatar(): string {
     return this.configService.getOrThrow('app.defaultAvatar');
   }
+
+  get sfuRoomSnapshotTtl(): number {
+    return this.configService.getOrThrow('app.sfuRoomSnapshotTtl');
+  }
 }
