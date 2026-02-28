@@ -1,3 +1,4 @@
+// src/modules/sfu/snapshot.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from 'src/config/redis/redis.service';
 import { PersistedRoomSnapshot } from './types/persisted.room.types';
@@ -74,4 +75,3 @@ export class SnapshotService {
     }
   }
 }
-

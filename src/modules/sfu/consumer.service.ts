@@ -1,3 +1,4 @@
+// src/modules/sfu/consumer.service.ts
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { MediasoupService } from './mediasoup.service';
@@ -94,4 +95,3 @@ export class ConsumerService {
     };
   }
 }
-

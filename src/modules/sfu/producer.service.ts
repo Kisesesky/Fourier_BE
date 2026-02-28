@@ -1,3 +1,4 @@
+// src/modules/sfu/producer.service.ts
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { MediasoupService } from './mediasoup.service';
@@ -23,15 +24,18 @@ export class ProducerService {
     appData?: Record<string, any>;
   }) {
     const transport = this.store.transports.get(params.transportId);
+
     if (!transport || transport.userId !== params.userId || transport.direction !== 'send') {
       throw new Error('Invalid send transport');
     }
+
     const room = this.roomService.ensureRoom(params.roomId);
     const peer = room.peers.get(params.userId);
+
     if (!peer) throw new Error('Peer not joined');
 
     if (this.mediasoupService.isAvailable() && transport.transport) {
-      const mediaKind = params.kind === 'audio' ? 'audio' : 'video';
+      const mediaKind: 'audio' | 'video' = params.kind === 'audio' ? 'audio' : 'video';
       const producer = await transport.transport.produce({
         kind: mediaKind,
         rtpParameters: params.rtpParameters,
@@ -56,7 +60,7 @@ export class ProducerService {
         this.store.producers.delete(producer.id);
         peer.producers.delete(producer.id);
       });
-      return { id: producer.id };
+      return { id: producer.id, kind: params.kind };
     }
 
     const id = randomUUID();
@@ -71,7 +75,7 @@ export class ProducerService {
     };
     this.store.producers.set(id, state);
     peer.producers.add(id);
-    return { id };
+    return { id, kind: params.kind };
   }
 
   closeProducer(roomId: string, userId: string, producerId: string) {
@@ -85,8 +89,11 @@ export class ProducerService {
     if (producer?.producer) producer.producer.close();
     this.store.producers.delete(producerId);
 
-    for (const [consumerId, consumer] of this.store.consumers.entries()) {
-      if (consumer.producerId !== producerId) continue;
+    const consumersToDelte = [...this.store.consumers.entries()].filter(
+      ([, consumer]) => consumer.producerId === producerId,
+    );
+
+    for (const [consumerId, consumer] of consumersToDelte) {
       if (consumer.consumer) consumer.consumer.close();
       const consumerPeer = room.peers.get(consumer.userId);
       consumerPeer?.consumers.delete(consumerId);
@@ -120,4 +127,3 @@ export class ProducerService {
     return producers;
   }
 }
-

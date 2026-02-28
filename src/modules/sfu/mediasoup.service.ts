@@ -1,6 +1,8 @@
+// src/modules/sfu/mediasoup.service.ts
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RoomState } from './types/room.types';
 import { SfuStore } from './sfu.store';
+import { DEFAULT_MEDIA_CODECS, SFU_RTC_MAX_PORT, SFU_RTC_MIN_PORT } from './constants/sfu.constants';
 
 @Injectable()
 export class MediasoupService implements OnModuleInit {
@@ -15,8 +17,8 @@ export class MediasoupService implements OnModuleInit {
       const dynamicImport = new Function("return import('mediasoup')");
       const mediasoupModule = await dynamicImport();
       this.worker = await mediasoupModule.createWorker({
-        rtcMinPort: 40000,
-        rtcMaxPort: 40100,
+        rtcMinPort: SFU_RTC_MIN_PORT,
+        rtcMaxPort: SFU_RTC_MAX_PORT,
         logLevel: 'warn',
       });
       this.mediasoupAvailable = true;
@@ -45,10 +47,7 @@ export class MediasoupService implements OnModuleInit {
       return room.router.rtpCapabilities;
     }
     return {
-      codecs: [
-        { kind: 'audio', mimeType: 'audio/opus', clockRate: 48000, channels: 2 },
-        { kind: 'video', mimeType: 'video/VP8', clockRate: 90000 },
-      ],
+      codecs: DEFAULT_MEDIA_CODECS,
       headerExtensions: [],
     };
   }
@@ -57,11 +56,7 @@ export class MediasoupService implements OnModuleInit {
     if (!this.mediasoupAvailable || !this.worker) return;
     if (room.router) return;
     room.router = await this.worker.createRouter({
-      mediaCodecs: [
-        { kind: 'audio', mimeType: 'audio/opus', clockRate: 48000, channels: 2 },
-        { kind: 'video', mimeType: 'video/VP8', clockRate: 90000 },
-      ],
+      mediaCodecs: DEFAULT_MEDIA_CODECS,
     });
   }
 }
-

@@ -1,3 +1,4 @@
+// src/modules/sfu/types/peer.types.ts
 export type PeerState = {
   userId: string;
   socketId: string;

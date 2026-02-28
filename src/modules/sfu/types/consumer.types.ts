@@ -1,3 +1,4 @@
+// src/modules/sfu/types/consumer.types.ts
 import { TrackKind } from "./media.types";
 
 export type ConsumerState = {

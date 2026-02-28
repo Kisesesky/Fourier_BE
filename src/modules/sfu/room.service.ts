@@ -1,3 +1,4 @@
+// src/modules/sfu/room.service.ts
 import { Injectable } from '@nestjs/common';
 import { MediaState } from './types/media.types';
 import { PeerState } from './types/peer.types';
@@ -99,4 +100,3 @@ export class RoomService {
     return states;
   }
 }
-

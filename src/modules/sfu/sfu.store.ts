@@ -1,3 +1,4 @@
+// src/modules/sfu/sfu.store.ts
 import { Injectable } from '@nestjs/common';
 import { ConsumerState } from './types/consumer.types';
 import { ProducerState } from './types/producer.types';
@@ -20,4 +21,3 @@ export class SfuStore {
     };
   }
 }
-

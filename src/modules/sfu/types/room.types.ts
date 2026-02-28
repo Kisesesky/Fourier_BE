@@ -1,3 +1,4 @@
+// src/modules/sfu/types/room.types.ts
 import { PeerState } from "./peer.types";
 
 export type RoomState = {

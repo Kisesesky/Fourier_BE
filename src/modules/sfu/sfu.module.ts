@@ -1,3 +1,4 @@
+// src/modules/sfu/sfu.module.ts
 import { Module } from '@nestjs/common';
 import { RedisConfigModule } from 'src/config/redis/config.module';
 import { ConsumerService } from './consumer.service';

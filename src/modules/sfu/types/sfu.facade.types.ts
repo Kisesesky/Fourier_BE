@@ -1,3 +1,4 @@
+// src/modules/sfu/types/sfu.facade.types.ts
 import { TrackKind, TransportDirection } from './media.types';
 
 export type JoinRoomDto = {
@@ -78,4 +79,3 @@ export type GetPersistedRoomSnapshotDto = {
   roomId: string;
   exceptUserId?: string;
 };
-

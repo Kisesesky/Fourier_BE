@@ -1,3 +1,4 @@
+// src/modules/sfu/types/producer.types.ts
 import { TrackKind } from "./media.types";
 
 export type ProducerState = {

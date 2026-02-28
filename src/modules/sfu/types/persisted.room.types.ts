@@ -1,3 +1,4 @@
+// src/modules/sfu/types/persisted.room.types.ts
 import { MediaState } from "./media.types";
 
 export type PersistedRoomSnapshot = {
