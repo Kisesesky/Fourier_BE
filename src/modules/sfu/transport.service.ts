@@ -64,13 +64,16 @@ export class TransportService {
 
   async connectTransport(transportId: string, dtlsParameters: any) {
     const transport = this.store.transports.get(transportId);
-    if (!transport) throw new Error('Transport not found');
+    if (!transport) {
+      throw new Error('Transport not found')
+    }
+
     if (this.mediasoupService.isAvailable() && transport.transport) {
       await transport.transport.connect({ dtlsParameters });
     }
+
     transport.connected = true;
     transport.dtlsParameters = dtlsParameters;
-    this.store.transports.set(transportId, transport);
     return { ok: true };
   }
 }
