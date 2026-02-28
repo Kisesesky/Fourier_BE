@@ -27,12 +27,46 @@ export class RoomService {
       };
       room.peers.set(userId, peer);
     } else {
+      this._cleanupPeerResources(roomId, userId)
       room.peers.get(userId)!.socketId = socketId;
     }
     return {
       roomId,
       peers: Array.from(room.peers.keys()),
     };
+  }
+
+  private _cleanupPeerResources(roomId: string, userId: string) {
+    const room = this.store.rooms.get(roomId);
+    if (!room) return;
+    const peer = room.peers.get(userId);
+    if (!peer) return;
+
+    for (const consumerId of peer.consumers) {
+      const consumerState = this.store.consumers.get(consumerId);
+      if (consumerState?.consumer) {
+        return consumerState.consumer.close();
+      }
+      this.store.consumers.delete(consumerId);
+    }
+    peer.consumers.clear();
+
+    for (const producerId of peer.producers) {
+      const producerState = this.store.producers.get(producerId);
+      if (producerState?.producer) {
+        return producerState.producer.close();
+      }
+      this.store.producers.delete(producerId);
+    }
+    peer.producers.clear();
+
+    for (const transportId of peer.transports) {
+      const transportState = this.store.transports.get(transportId);
+      if (transportState?.transport) {
+        return transportState.transport.close();
+      }
+      this.store.producers.delete(transportId);
+    }
   }
 
   leaveRoom(roomId: string, userId: string) {
