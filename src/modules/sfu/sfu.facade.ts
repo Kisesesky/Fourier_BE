@@ -1,5 +1,5 @@
 // src/modules/sfu/sfu.facade.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConsumerService } from './consumer.service';
 import { MediasoupService } from './mediasoup.service';
 import { ProducerService } from './producer.service';
@@ -25,6 +25,8 @@ import { TransportService } from './transport.service';
 
 @Injectable()
 export class SfuFacade {
+  private readonly logger = new Logger(SfuFacade.name);
+  
   constructor(
     private readonly mediasoupService: MediasoupService,
     private readonly roomService: RoomService,
@@ -33,6 +35,22 @@ export class SfuFacade {
     private readonly consumerService: ConsumerService,
     private readonly snapshotService: SnapshotService,
   ) {}
+
+  private persistSnapshot(roomId: string) {
+    void this.snapshotService.persistRoomSnapshot(roomId).catch((err: Error) => {
+      this.logger.error(`snapshot persist failed for room=${roomId}: ${err.message}`);
+    });
+  }
+
+  private persistSnapshots(roomIds: string[]) {
+    void Promise.all(
+      roomIds.map((roomId) =>
+        this.snapshotService.persistRoomSnapshot(roomId).catch((err: Error) => {
+          this.logger.error(`snapshot persist failed for room=${roomId}: ${err.message}`);
+        }),
+      ),
+    );
+  }
 
   getRuntimeInfo() {
     return this.mediasoupService.getRuntimeInfo();
@@ -55,7 +73,7 @@ export class SfuFacade {
 
   leaveUserFromAllRooms(dto: LeaveUserFromAllRoomsDto) {
     const leftRoomIds = this.roomService.leaveUserFromAllRooms(dto.userId);
-    void Promise.all(leftRoomIds.map((roomId) => this.snapshotService.persistRoomSnapshot(roomId)));
+    this.persistSnapshots(leftRoomIds);
     return leftRoomIds;
   }
 
@@ -69,7 +87,7 @@ export class SfuFacade {
 
   async produce(dto: ProduceDto) {
     const produced = await this.producerService.produce(dto);
-    await this.snapshotService.persistRoomSnapshot(dto.roomId);
+    this.persistSnapshot(dto.roomId);
     return produced;
   }
 
@@ -79,12 +97,12 @@ export class SfuFacade {
 
   closeProducer(dto: CloseProducerDto) {
     this.producerService.closeProducer(dto.roomId, dto.userId, dto.producerId);
-    void this.snapshotService.persistRoomSnapshot(dto.roomId);
+    this.persistSnapshot(dto.roomId);
   }
 
   closeUserProducers(dto: CloseUserProducersDto) {
     const producerIds = this.producerService.closeUserProducers(dto.roomId, dto.userId);
-    void this.snapshotService.persistRoomSnapshot(dto.roomId);
+    this.persistSnapshot(dto.roomId);
     return producerIds;
   }
 
