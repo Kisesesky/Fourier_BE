@@ -16,18 +16,33 @@ import { DmMessage } from '../entities/dm-message.entity';
 import { ForbiddenException, forwardRef, Inject } from '@nestjs/common';
 import { ScopedMessage } from '../types/message-scope.type';
 import { OnEvent } from '@nestjs/event-emitter';
+import { SfuFacade } from 'src/modules/sfu/sfu.facade';
+import {
+  WsSfuCloseProducerDto,
+  WsSfuConnectTransportDto,
+  WsSfuConsumeDto,
+  WsSfuCreateTransportDto,
+  WsSfuHostActionDto,
+  WsSfuJoinDto,
+  WsSfuLeaveDto,
+  WsSfuProduceDto,
+  WsSfuRequestDto,
+} from '../dto/ws-sfu.dto';
 
 @WebSocketGateway({ namespace: '/chat', cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
 
   private onlineUsers = new Map<string, string>();
+  private socketUsers = new Map<string, string>();
   private threadViewers = new Map<string, Set<string>>();
   private userStatus = new Map<string, 'online' | 'offline' | 'away' | 'dnd'>();
+  private huddleParticipants = new Map<string, Set<string>>();
 
   constructor(
     @Inject(forwardRef(() => ChatService))
-    private readonly chatService: ChatService
+    private readonly chatService: ChatService,
+    private readonly sfuService: SfuFacade,
   ) {}
 
   private resolveMessageRoom(
@@ -92,6 +107,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { onlineUserIds: this.getOnlineUserIds(), statuses };
   }
 
+  private getRoomUserIds(roomName: string): string[] {
+    const room = this.server?.sockets?.adapter?.rooms?.get(roomName);
+    if (!room) return [];
+    const userIds = new Set<string>();
+    for (const socketId of room.values()) {
+      const userId = this.socketUsers.get(socketId);
+      if (userId) userIds.add(userId);
+    }
+    return Array.from(userIds);
+  }
+
   setUserPresence(userId: string, status: 'online' | 'offline' | 'away' | 'dnd') {
     this.userStatus.set(userId, status);
     this.server.emit('presence.update', {
@@ -116,6 +142,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // 온라인 상태 등록
       this.onlineUsers.set(user.id, client.id);
+      this.socketUsers.set(client.id, user.id);
       this.userStatus.set(user.id, 'online');
       this.server.emit('presence.update', {
         userId: user.id,
@@ -142,10 +169,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /** 클라이언트 연결 해제 */
   handleDisconnect(client: Socket) {
-    const userEntry = Array.from(this.onlineUsers.entries()).find(([_, id]) => id === client.id);
-    if (!userEntry) return;
-
-    const userId = userEntry[0];
+    const userId = this.socketUsers.get(client.id);
+    if (!userId) return;
+    this.socketUsers.delete(client.id);
     this.onlineUsers.delete(userId);
     this.userStatus.set(userId, 'offline');
     this.server.emit('presence.update', {
@@ -154,11 +180,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       onlineUserIds: this.getOnlineUserIds(),
     });
 
+    for (const [channelId, members] of this.huddleParticipants.entries()) {
+      if (!members.has(userId)) continue;
+      members.delete(userId);
+      this.server.to(`channel:${channelId}`).emit('webrtc.user-left', { channelId, userId });
+      if (members.size === 0) {
+        this.huddleParticipants.delete(channelId);
+      }
+    }
+
     for (const [parentId, viewers] of this.threadViewers) {
       viewers.delete(userId);
       if (viewers.size === 0) {
         this.threadViewers.delete(parentId);
       }
+    }
+
+    const leftSfuRooms = this.sfuService.leaveUserFromAllRooms({ userId });
+    for (const roomId of leftSfuRooms) {
+      this.server.to(`channel:${roomId}`).emit('sfu.peer-left', {
+        roomId,
+        userId,
+      });
     }
   }
 
@@ -456,5 +499,414 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         : 'message.unsaved',
       { messageId: body.messageId },
     );
+  }
+
+  @SubscribeMessage('webrtc.join')
+  async handleWebrtcJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelId: string; mode?: 'audio' | 'video' },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    if (!body?.channelId) return;
+    const roomName = `channel:${body.channelId}`;
+    const participants = this.getRoomUserIds(roomName).filter((id) => id !== user.id);
+
+    const current = this.huddleParticipants.get(body.channelId) ?? new Set<string>();
+    current.add(user.id);
+    this.huddleParticipants.set(body.channelId, current);
+
+    client.emit('webrtc.participants', {
+      channelId: body.channelId,
+      participants,
+    });
+    client.to(roomName).emit('webrtc.user-joined', {
+      channelId: body.channelId,
+      userId: user.id,
+      mode: body.mode ?? 'audio',
+    });
+    client.to(roomName).emit('webrtc.media-state', {
+      channelId: body.channelId,
+      userId: user.id,
+      track: 'audio',
+      enabled: true,
+    });
+  }
+
+  @SubscribeMessage('webrtc.leave')
+  async handleWebrtcLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelId: string },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    if (!body?.channelId) return;
+    const members = this.huddleParticipants.get(body.channelId);
+    if (members) {
+      members.delete(user.id);
+      if (members.size === 0) this.huddleParticipants.delete(body.channelId);
+    }
+    client.to(`channel:${body.channelId}`).emit('webrtc.user-left', {
+      channelId: body.channelId,
+      userId: user.id,
+    });
+  }
+
+  @SubscribeMessage('webrtc.offer')
+  async handleWebrtcOffer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelId: string; targetUserId: string; sdp: any },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    const targetSocketId = this.onlineUsers.get(body.targetUserId);
+    if (!targetSocketId) return;
+    this.server.to(targetSocketId).emit('webrtc.offer', {
+      channelId: body.channelId,
+      fromUserId: user.id,
+      sdp: body.sdp,
+    });
+  }
+
+  @SubscribeMessage('webrtc.answer')
+  async handleWebrtcAnswer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelId: string; targetUserId: string; sdp: any },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    const targetSocketId = this.onlineUsers.get(body.targetUserId);
+    if (!targetSocketId) return;
+    this.server.to(targetSocketId).emit('webrtc.answer', {
+      channelId: body.channelId,
+      fromUserId: user.id,
+      sdp: body.sdp,
+    });
+  }
+
+  @SubscribeMessage('webrtc.ice-candidate')
+  async handleWebrtcIceCandidate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: { channelId: string; targetUserId: string; candidate: any },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    const targetSocketId = this.onlineUsers.get(body.targetUserId);
+    if (!targetSocketId) return;
+    this.server.to(targetSocketId).emit('webrtc.ice-candidate', {
+      channelId: body.channelId,
+      fromUserId: user.id,
+      candidate: body.candidate,
+    });
+  }
+
+  @SubscribeMessage('webrtc.media-state')
+  async handleWebrtcMediaState(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: { channelId: string; track: 'audio' | 'video' | 'screen'; enabled: boolean },
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    if (!body?.channelId || !body?.track) return;
+    client.to(`channel:${body.channelId}`).emit('webrtc.media-state', {
+      channelId: body.channelId,
+      userId: user.id,
+      track: body.track,
+      enabled: !!body.enabled,
+    });
+  }
+
+  @SubscribeMessage('sfu.get-capabilities')
+  async handleSfuCapabilities(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body?: WsSfuRequestDto,
+  ) {
+    await this.chatService.getUserBySocket(client);
+    client.emit('sfu.capabilities', {
+      requestId: body?.requestId,
+      routerRtpCapabilities: this.sfuService.getRouterRtpCapabilities(),
+      runtime: this.sfuService.getRuntimeInfo(),
+    });
+  }
+
+  @SubscribeMessage('sfu.join')
+  async handleSfuJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuJoinDto,
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    if (!body?.channelId) return;
+    const roomId = body.channelId;
+    const access = await this.chatService.getSfuChannelAccess(roomId, user.id);
+    const joined = this.sfuService.joinRoom({ roomId, userId: user.id, socketId: client.id });
+    const persisted = await this.sfuService.getPersistedRoomSnapshot({ roomId, exceptUserId: user.id });
+    const inMemoryMediaStates = this.sfuService.listRoomMediaStates({ roomId, exceptUserId: user.id });
+    const mergedMediaStates = {
+      ...(persisted?.mediaStates ?? {}),
+      ...inMemoryMediaStates,
+    };
+    client.emit('sfu.joined', {
+      requestId: body.requestId,
+      roomId,
+      peers: joined.peers.filter((peerId) => peerId !== user.id),
+      producers: this.sfuService.listRoomProducers({ roomId, exceptUserId: user.id }),
+      mediaStates: mergedMediaStates,
+      recoveredSnapshotAt: persisted?.updatedAt ?? null,
+      access,
+    });
+    client.to(`channel:${body.channelId}`).emit('sfu.peer-joined', {
+      roomId,
+      userId: user.id,
+    });
+  }
+
+  @SubscribeMessage('sfu.leave')
+  async handleSfuLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuLeaveDto,
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    if (!body?.channelId) return;
+    this.sfuService.leaveRoom({ roomId: body.channelId, userId: user.id });
+    client.to(`channel:${body.channelId}`).emit('sfu.peer-left', {
+      roomId: body.channelId,
+      userId: user.id,
+    });
+  }
+
+  @SubscribeMessage('sfu.create-transport')
+  async handleSfuCreateTransport(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuCreateTransportDto,
+  ) {
+    try {
+      const user = await this.chatService.getUserBySocket(client);
+      if (!body?.channelId || !body?.direction) return;
+      const access = await this.chatService.getSfuChannelAccess(body.channelId, user.id);
+      if (body.direction === 'send' && !access.canProduce) {
+        client.emit('sfu.error', {
+          op: 'create-transport',
+          message: '송신 권한이 없습니다.',
+        });
+        return;
+      }
+      const transport = await this.sfuService.createWebRtcTransport({
+        roomId: body.channelId,
+        userId: user.id,
+        direction: body.direction,
+      });
+      client.emit('sfu.transport-created', {
+        requestId: body.requestId,
+        roomId: body.channelId,
+        direction: body.direction,
+        transport,
+      });
+    } catch (error: any) {
+      client.emit('sfu.error', {
+        op: 'create-transport',
+        message: error?.message ?? 'unknown error',
+      });
+    }
+  }
+
+  @SubscribeMessage('sfu.connect-transport')
+  async handleSfuConnectTransport(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuConnectTransportDto,
+  ) {
+    try {
+      await this.chatService.getUserBySocket(client);
+      if (!body?.transportId) return;
+      await this.sfuService.connectTransport({
+        transportId: body.transportId,
+        dtlsParameters: body.dtlsParameters,
+      });
+      client.emit('sfu.transport-connected', {
+        requestId: body.requestId,
+        roomId: body.channelId,
+        transportId: body.transportId,
+      });
+    } catch (error: any) {
+      client.emit('sfu.error', {
+        op: 'connect-transport',
+        message: error?.message ?? 'unknown error',
+      });
+    }
+  }
+
+  @SubscribeMessage('sfu.produce')
+  async handleSfuProduce(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuProduceDto,
+  ) {
+    try {
+      const user = await this.chatService.getUserBySocket(client);
+      if (!body?.channelId || !body?.transportId || !body?.kind) return;
+      const access = await this.chatService.getSfuChannelAccess(body.channelId, user.id);
+      if (!access.canProduce) {
+        client.emit('sfu.error', {
+          op: 'produce',
+          message: '발언 권한이 없습니다.',
+        });
+        return;
+      }
+      const producer = await this.sfuService.produce({
+        roomId: body.channelId,
+        userId: user.id,
+        transportId: body.transportId,
+        kind: body.kind,
+        rtpParameters: body.rtpParameters,
+        appData: body.appData,
+      });
+      client.emit('sfu.produced', {
+        requestId: body.requestId,
+        roomId: body.channelId,
+        producerId: producer.id,
+        kind: body.kind,
+      });
+      client.to(`channel:${body.channelId}`).emit('sfu.new-producer', {
+        roomId: body.channelId,
+        userId: user.id,
+        producerId: producer.id,
+        kind: body.kind,
+      });
+      client.to(`channel:${body.channelId}`).emit('sfu.media-state', {
+        roomId: body.channelId,
+        userId: user.id,
+        state: this.sfuService.getUserMediaState({ roomId: body.channelId, userId: user.id }),
+      });
+    } catch (error: any) {
+      client.emit('sfu.error', {
+        op: 'produce',
+        message: error?.message ?? 'unknown error',
+      });
+    }
+  }
+
+  @SubscribeMessage('sfu.consume')
+  async handleSfuConsume(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuConsumeDto,
+  ) {
+    try {
+      const user = await this.chatService.getUserBySocket(client);
+      if (!body?.channelId || !body?.transportId || !body?.producerId) return;
+      const consumer = await this.sfuService.consume({
+        roomId: body.channelId,
+        userId: user.id,
+        transportId: body.transportId,
+        producerId: body.producerId,
+        rtpCapabilities: body.rtpCapabilities,
+      });
+      client.emit('sfu.consumed', {
+        requestId: body.requestId,
+        roomId: body.channelId,
+        consumer,
+      });
+    } catch (error: any) {
+      client.emit('sfu.error', {
+        op: 'consume',
+        message: error?.message ?? 'unknown error',
+      });
+    }
+  }
+
+  @SubscribeMessage('sfu.close-producer')
+  async handleSfuCloseProducer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuCloseProducerDto,
+  ) {
+    const user = await this.chatService.getUserBySocket(client);
+    if (!body?.channelId || !body?.producerId) return;
+    this.sfuService.closeProducer({
+      roomId: body.channelId,
+      userId: user.id,
+      producerId: body.producerId,
+    });
+    client.to(`channel:${body.channelId}`).emit('sfu.producer-closed', {
+      roomId: body.channelId,
+      userId: user.id,
+      producerId: body.producerId,
+    });
+    client.to(`channel:${body.channelId}`).emit('sfu.media-state', {
+      roomId: body.channelId,
+      userId: user.id,
+      state: this.sfuService.getUserMediaState({ roomId: body.channelId, userId: user.id }),
+    });
+  }
+
+  @SubscribeMessage('sfu.host-force-mute')
+  async handleSfuHostForceMute(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuHostActionDto,
+  ) {
+    try {
+      const actor = await this.chatService.getUserBySocket(client);
+      if (!body?.channelId || !body?.targetUserId) return;
+      const access = await this.chatService.getSfuChannelAccess(body.channelId, actor.id);
+      if (access.callRole !== 'host') {
+        client.emit('sfu.error', { op: 'host-force-mute', message: '호스트 권한이 필요합니다.' });
+        return;
+      }
+      const closedProducerIds = this.sfuService.closeUserProducers({
+        roomId: body.channelId,
+        userId: body.targetUserId,
+      });
+      for (const producerId of closedProducerIds) {
+        this.server.to(`channel:${body.channelId}`).emit('sfu.producer-closed', {
+          roomId: body.channelId,
+          userId: body.targetUserId,
+          producerId,
+        });
+      }
+      this.server.to(`channel:${body.channelId}`).emit('sfu.media-state', {
+        roomId: body.channelId,
+        userId: body.targetUserId,
+        state: this.sfuService.getUserMediaState({ roomId: body.channelId, userId: body.targetUserId }),
+      });
+      this.server.to(`channel:${body.channelId}`).emit('sfu.host-muted', {
+        roomId: body.channelId,
+        targetUserId: body.targetUserId,
+        byUserId: actor.id,
+      });
+    } catch (error: any) {
+      client.emit('sfu.error', {
+        op: 'host-force-mute',
+        message: error?.message ?? 'unknown error',
+      });
+    }
+  }
+
+  @SubscribeMessage('sfu.host-kick')
+  async handleSfuHostKick(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: WsSfuHostActionDto,
+  ) {
+    try {
+      const actor = await this.chatService.getUserBySocket(client);
+      if (!body?.channelId || !body?.targetUserId) return;
+      const access = await this.chatService.getSfuChannelAccess(body.channelId, actor.id);
+      if (access.callRole !== 'host') {
+        client.emit('sfu.error', { op: 'host-kick', message: '호스트 권한이 필요합니다.' });
+        return;
+      }
+      const targetSocketId = this.sfuService.getPeerSocketId({
+        roomId: body.channelId,
+        userId: body.targetUserId,
+      });
+      this.sfuService.leaveRoom({ roomId: body.channelId, userId: body.targetUserId });
+      this.server.to(`channel:${body.channelId}`).emit('sfu.peer-left', {
+        roomId: body.channelId,
+        userId: body.targetUserId,
+      });
+      if (targetSocketId) {
+        this.server.to(targetSocketId).emit('sfu.kicked', {
+          roomId: body.channelId,
+          targetUserId: body.targetUserId,
+          byUserId: actor.id,
+        });
+      }
+    } catch (error: any) {
+      client.emit('sfu.error', {
+        op: 'host-kick',
+        message: error?.message ?? 'unknown error',
+      });
+    }
   }
 }

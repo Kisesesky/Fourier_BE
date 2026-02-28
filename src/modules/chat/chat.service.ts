@@ -36,6 +36,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChannelPreference } from './entities/channel-preference.entity';
 import { ChannelMember } from './entities/channel-member.entity';
 import { ProjectMember } from '../projects/entities/project-member.entity';
+import { ChannelType } from './constants/channel-type.enum';
+import { ProjectRole } from '../projects/constants/project-role.enum';
 
 @Injectable()
 export class ChatService {
@@ -348,6 +350,7 @@ export class ChatService {
     user: User,
     name: string,
     memberIds: string[] = [],
+    type: ChannelType = ChannelType.CHAT,
   ) {
     const trimmed = (name || '').trim();
     if (!trimmed) {
@@ -363,6 +366,7 @@ export class ChatService {
         name: trimmed,
         project,
         isDefault: false,
+        type,
       }),
     );
 
@@ -386,6 +390,49 @@ export class ChatService {
       channel,
       memberIds: members.map((member) => member.user.id),
     };
+  }
+
+  async getSfuChannelAccess(channelId: string, userId: string) {
+    const channel = await this.channelRepository.findOne({
+      where: { id: channelId },
+      relations: ['project', 'members', 'members.user'],
+    });
+    if (!channel) {
+      throw new NotFoundException('채널을 찾을 수 없습니다.');
+    }
+
+    const projectMember = await this.projectMemberRepository.findOne({
+      where: {
+        project: { id: channel.project.id },
+        user: { id: userId },
+      },
+    });
+    if (!projectMember) {
+      throw new ForbiddenException('프로젝트 멤버만 음성 채널에 참여할 수 있습니다.');
+    }
+
+    const hasRestrictedMembers = Array.isArray(channel.members) && channel.members.length > 0;
+    if (hasRestrictedMembers) {
+      const isChannelMember = channel.members.some((member) => member.user?.id === userId);
+      if (!isChannelMember) {
+        throw new ForbiddenException('해당 채널의 멤버만 통화에 참여할 수 있습니다.');
+      }
+    }
+
+    const role = projectMember.role;
+    const isHost = role === ProjectRole.OWNER || role === ProjectRole.MANAGER;
+    const canProduce = role !== ProjectRole.GUEST;
+    const callRole = isHost ? 'host' : canProduce ? 'speaker' : 'listener';
+
+    return {
+      channelId,
+      projectId: channel.project.id,
+      projectRole: role,
+      callRole,
+      canProduce,
+      canShareScreen: canProduce,
+      canUseVideo: canProduce,
+    } as const;
   }
 
   private async assertProjectMember(projectId: string, userId: string) {

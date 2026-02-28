@@ -3,6 +3,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDat
 import { Project } from '../../projects/entities/project.entity';
 import { ChannelMessage } from './channel-message.entity';
 import { ChannelMember } from './channel-member.entity';
+import { ChannelType } from '../constants/channel-type.enum';
 
 @Entity()
 export class Channel {
@@ -17,6 +18,9 @@ export class Channel {
 
   @Column({ default: false })
   isDefault: boolean
+
+  @Column({ type: 'enum', enum: ChannelType, default: ChannelType.CHAT })
+  type: ChannelType;
 
   @OneToMany(() => ChannelMessage, (message) => message.channel)
   messages: ChannelMessage[];

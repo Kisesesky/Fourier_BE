@@ -26,6 +26,7 @@ import { ChannelPreference } from './entities/channel-preference.entity';
 import { Project } from '../projects/entities/project.entity';
 import { ChannelMember } from './entities/channel-member.entity';
 import { ProjectMember } from '../projects/entities/project-member.entity';
+import { SfuModule } from '../sfu/sfu.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { ProjectMember } from '../projects/entities/project-member.entity';
     AppConfigModule,
     FilesModule,
     EventEmitterModule.forRoot(),
+    SfuModule,
   ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway, LinkPreviewService],

@@ -1,5 +1,5 @@
 // src/modules/chat/chat.controller.ts
-import { Controller, Get, Post,  Body, Query, UseGuards, Param, Patch, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post,  Body, Query, UseGuards, Patch, BadRequestException } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -21,6 +21,7 @@ import { ChatGateway } from './gateways/chat.gateway';
 import { GetChannelPreferencesDto, SaveChannelPreferencesDto } from './dto/channel-preferences.dto';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdatePresenceStatusDto } from './dto/update-presence-status.dto';
+import { ChannelType } from './constants/channel-type.enum';
 
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
@@ -240,6 +241,7 @@ export class ChatController {
       name: channel.name,
       projectId,
       isDefault: channel.isDefault,
+      type: channel.type ?? ChannelType.CHAT,
     }));
   }
 
@@ -278,12 +280,14 @@ export class ChatController {
       user,
       createChannelDto.name,
       createChannelDto.memberIds ?? [],
+      createChannelDto.type ?? ChannelType.CHAT,
     );
     return {
       id: channel.id,
       name: channel.name,
       projectId: createChannelDto.projectId,
       isDefault: channel.isDefault,
+      type: channel.type ?? ChannelType.CHAT,
       memberIds,
     };
   }

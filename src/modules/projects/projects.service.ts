@@ -25,6 +25,7 @@ import { CalendarFolder } from '../calendar/entities/calendar-folder.entity';
 import { CalendarMemberRole } from '../calendar/constants/calendar-member-role.enum';
 import { CalendarType } from '../calendar/constants/calendar-type.enum';
 import { CalendarEvent } from '../calendar/entities/calendar-event.entity';
+import { ChannelType } from '../chat/constants/channel-type.enum';
 
 @Injectable()
 export class ProjectsService {
@@ -156,6 +157,7 @@ export class ProjectsService {
           name: 'general',
           project,
           isDefault: true,
+          type: ChannelType.CHAT,
         }),
       );
     }
