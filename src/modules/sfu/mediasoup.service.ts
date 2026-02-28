@@ -13,6 +13,11 @@ export class MediasoupService implements OnModuleInit {
   constructor(private readonly store: SfuStore) {}
 
   async onModuleInit() {
+    if (!process.env.SFU_ANNOUNCED_IP) {
+      this.logger.warn(
+        'SFU_ANNOUNCED_IP is not set. WebRTC ICE connection will likely fail in production.',
+      );
+    }
     try {
       const dynamicImport = new Function("return import('mediasoup')");
       const mediasoupModule = await dynamicImport();
@@ -20,6 +25,11 @@ export class MediasoupService implements OnModuleInit {
         rtcMinPort: SFU_RTC_MIN_PORT,
         rtcMaxPort: SFU_RTC_MAX_PORT,
         logLevel: 'warn',
+      });
+
+      this.worker.on('died', (error: Error) => {
+        this.mediasoupAvailable = false;
+        this.logger.error(`mediasoup worker died: ${error.message}`);
       });
       this.mediasoupAvailable = true;
       this.logger.log('mediasoup worker initialized. SFU mode enabled.');
