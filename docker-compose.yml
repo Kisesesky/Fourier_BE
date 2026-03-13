@@ -1,0 +1,82 @@
+# docker-compose.yml
+services:
+  database:
+    image: postgres:15
+    container_name: fourier_postgres
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - backend
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nestjs-app:
+    image: hoyau/fourier_app:latest
+    container_name: fourier_app
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: sh -c "npm run migration:run && npm run start:prod"
+
+    networks:
+      - backend
+      - frontend
+
+  nginx:
+    image: nginx:latest
+    container_name: fourier_nginx
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/etc/letsencrypt:/etc/letsencrypt
+
+    depends_on:
+      - nestjs-app
+
+    networks:
+      - frontend
+
+  certbot:
+    image: certbot/certbot
+    container_name: fourier_certbot
+
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/etc/letsencrypt:/etc/letsencrypt
+
+    entrypoint: >
+      /bin/sh -c "trap exit TERM;
+      while :;
+      do certbot renew;
+      sleep 12h & wait $${!};
+      done;"
+
+    networks:
+      - frontend
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+  frontend:
