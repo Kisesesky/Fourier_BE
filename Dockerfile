@@ -1,7 +1,7 @@
 # Dockerfile
 
 # 1. Node.js LTS 버전 사용
-FROM node:22-alpine AS builder
+FROM node:22
 
 # 서버 시간 한국시간으로 바꾸기
 ENV TZ=Asia/Seoul
