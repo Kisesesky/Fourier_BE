@@ -7,7 +7,7 @@ NestJS 기반의 협업/프로젝트 플랫폼 백엔드입니다. 사용자 인
 - 워크스페이스/팀/프로젝트/이슈 관리
 - 문서, 캘린더, 알림, 멘션, 활동 로그
 - 파일 업로드(GCS 연동)
-- 실시간 채팅(Socket.IO) + SFU(메디아수프)
+- 실시간 채팅(Socket.IO) + SFU(mediasoup)
 - Swagger API 문서 제공
 
 ## 기술 스택
@@ -124,6 +124,53 @@ npm run migration:revert
 - `src/database/*` TypeORM 설정 및 마이그레이션
 - `static/` 정적 리소스
 - `dist/` 빌드 결과물
+
+## Deployment
+본 서비스는 Docker 기반 컨테이너 환경에서 운영됩니다.
+```
+Internet
+   │
+   ▼
+Nginx (Reverse Proxy / HTTPS)
+   │
+   ▼
+NestJS API Server (Docker)
+   │
+   ▼
+PostgreSQL Database (Docker)
+```
+
+## CI/CD Pipeline
+GitHub Actions를 활용하여 Docker 이미지 빌드 및 배포 파이프라인을 구축했습니다.
+```workflow
+GitHub Push (main)
+      │
+      ▼
+GitHub Actions
+      │
+      ▼
+Docker Image Build
+      │
+      ▼
+Docker Hub Push
+      │
+      ▼
+Server Deployment
+```
+
+## Docker 실행
+서버에서 다음 명령으로 실핼할 수 있습니다.
+```bash
+docker compose up -d
+```
+컨테이너 상태 확인
+```bash
+docker ps
+```
+로그확인
+```bash
+docker logs fourier_app
+```
 
 ## 참고
 - 로컬에서 실행 시 PostgreSQL/Redis가 필요합니다.
