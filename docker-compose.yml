@@ -23,7 +23,7 @@ services:
       retries: 5
 
   nestjs-app:
-    image: hoyau/fourier_app:latest
+    image: hoyaa/fourier_app:latest
     container_name: fourier_app
     restart: unless-stopped
     depends_on:

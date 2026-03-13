@@ -21,7 +21,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD }}     # github Repository Actions에 등록
 
       - name: Build Docker image
-        run: docker build -t hoyau/fourier_app:latest .  # Docker-hub ID/Repository:tag
+        run: docker build -t hoyaa/fourier_app:latest .  # Docker-hub ID/Repository:tag
 
       - name: Push Docker image
-        run: docker push hoyau/fourier_app:latest        # Docker-hub ID/Repository:tag
+        run: docker push hoyaa/fourier_app:latest        # Docker-hub ID/Repository:tag
