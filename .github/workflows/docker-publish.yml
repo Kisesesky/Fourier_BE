@@ -1,0 +1,27 @@
+# .github/workflows/docker-publish.yml
+name: Build and Push Docker image
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}     # github Repository Actions에 등록
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}     # github Repository Actions에 등록
+
+      - name: Build Docker image
+        run: docker build -t hoyau/fourier_app:latest .  # Docker-hub ID/Repository:tag
+
+      - name: Push Docker image
+        run: docker push hoyau/fourier_app:latest        # Docker-hub ID/Repository:tag
