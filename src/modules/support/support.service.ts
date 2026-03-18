@@ -23,30 +23,30 @@ export class SupportService {
     private readonly projectMemberRepository: Repository<ProjectMember>,
   ) {}
 
-  async createInquiry(dto: CreateSupportInquiryDto, user: User) {
+  async createInquiry(createSupportInquiryDto: CreateSupportInquiryDto, user: User) {
     const project = await this.projectRepository.findOne({
-      where: { id: dto.projectId },
+      where: { id: createSupportInquiryDto.projectId },
       relations: ['team'],
     });
     if (!project) {
       throw new BadRequestException('project not found');
     }
-    if (project.team.id !== dto.teamId) {
+    if (project.team.id !== createSupportInquiryDto.teamId) {
       throw new BadRequestException('team/project mismatch');
     }
 
     const membership = await this.projectMemberRepository.findOne({
-      where: { project: { id: dto.projectId }, user: { id: user.id } },
+      where: { project: { id: createSupportInquiryDto.projectId }, user: { id: user.id } },
     });
     if (!membership) {
       throw new ForbiddenException('project member only');
     }
 
     const inquiry = this.supportInquiryRepository.create({
-      team: { id: dto.teamId } as Team,
-      project: { id: dto.projectId } as Project,
+      team: { id: createSupportInquiryDto.teamId } as Team,
+      project: { id: createSupportInquiryDto.projectId } as Project,
       requester: { id: user.id } as User,
-      message: dto.message.trim(),
+      message: createSupportInquiryDto.message.trim(),
       status: 'OPEN',
       source: 'FLOATING_WIDGET',
     });
@@ -57,8 +57,8 @@ export class SupportService {
       id: saved.id,
       status: saved.status,
       createdAt: saved.createdAt,
-      teamId: dto.teamId,
-      projectId: dto.projectId,
+      teamId: createSupportInquiryDto.teamId,
+      projectId: createSupportInquiryDto.projectId,
       requesterId: user.id,
     };
   }

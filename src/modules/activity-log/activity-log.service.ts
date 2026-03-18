@@ -19,7 +19,7 @@ export class ActivityLogService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
     @InjectRepository(ProjectMember)
-    private readonly projectMemberRepo: Repository<ProjectMember>,
+    private readonly projectMemberRepository: Repository<ProjectMember>,
     @InjectRepository(TeamMember)
     private readonly teamMemberRepository: Repository<TeamMember>,
     private readonly activityGateway: ActivityGateway,
@@ -48,7 +48,7 @@ export class ActivityLogService {
     projectId: string,
     user: User,
   ) {
-    const isMember = await this.projectMemberRepo.exists({
+    const isMember = await this.projectMemberRepository.exists({
       where: { project: { id: projectId }, user: { id: user.id } },
     });
 

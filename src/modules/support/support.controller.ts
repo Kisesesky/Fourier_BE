@@ -17,8 +17,8 @@ export class SupportController {
   @Post('inquiries')
   async createInquiry(
     @RequestUser() user: User,
-    @Body() dto: CreateSupportInquiryDto,
+    @Body() createSupportInquiryDto: CreateSupportInquiryDto,
   ) {
-    return this.supportService.createInquiry(dto, user);
+    return this.supportService.createInquiry(createSupportInquiryDto, user);
   }
 }
