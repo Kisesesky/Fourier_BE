@@ -35,9 +35,9 @@ export class VerificationController {
   @ApiOperation({ summary: '비밀번호 찾기 이메일 인증요청' })
   @Post('find-password/sendcode')
   async verifyPasswordFindCode(
-    @Body() verifyEmailCodeDto: VerifyEmailCodeDto
+    @Body() sendEmailCodeDto: SendEmailCodeDto
   ) {
-    const message = await this.verificationService.sendPasswordFindEmail(verifyEmailCodeDto.email);
+    const message = await this.verificationService.sendPasswordFindEmail(sendEmailCodeDto.email);
     return { success: true, message };
   }
 

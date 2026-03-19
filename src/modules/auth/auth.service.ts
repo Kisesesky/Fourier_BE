@@ -42,10 +42,17 @@ export class AuthService {
       throw new BadRequestException('이미 가입된 이메일입니다.');
     }
 
+    const isVerified = await this.verificationService.isEmailVerified(signUpCommand.email, 'signup');
+    if (!isVerified) {
+      throw new UnauthorizedException('이메일 인증이 필요합니다.');
+    }
+
     const user = await this.usersService.createLocalUser({
       ...signUpCommand,
       displayName: signUpCommand.displayName ?? signUpCommand.name
     });
+
+    await this.verificationService.consumeVerification(signUpCommand.email, 'signup');
     return new UserResponseDto(user);
   }
 

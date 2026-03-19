@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
 import { AppConfigService } from 'src/config/app/config.service';
@@ -36,6 +36,13 @@ export class VerificationService {
   }
 
   async sendVerificationCode(to: string, type: VerificationType = 'signup'): Promise<void> {
+    if (type === 'signup') {
+      const existingUser = await this.usersService.findUserByEmail(to);
+      if (existingUser) {
+        throw new BadRequestException('이미 가입된 이메일입니다.');
+      }
+    }
+
     const cooldownKey = `email-cooldonw:${to}`;
     const cooldown = await this.redisService.get(cooldownKey);
     if (cooldown) {
